@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from io import BytesIO
+import re
 from typing import Any
 from zipfile import BadZipFile, ZipFile
 
@@ -33,6 +34,7 @@ _STATION_INFO_REQUIRED_HEADERS = (
     "역 번호",
     "역명(한글)",
 )
+_ZERO_PADDED_NUMBER_FORMAT = re.compile(r"(?P<prefix>(?:\\.)*)(?P<zeros>0+)$")
 
 
 class KricFileClient:
@@ -241,18 +243,22 @@ def _header_text(value: object) -> str | None:
 
 
 def _cell_value(cell: Any) -> object:
-    """단순 0 패딩 수치 서식을 표시 문자열로 보존하고 나머지는 원시 값으로 둔다."""
+    """0 패딩과 이스케이프된 접두사가 있는 수치 서식을 표시 문자열로 보존한다."""
     value = cell.value
     number_format = cell.number_format
+    zero_padded = (
+        _ZERO_PADDED_NUMBER_FORMAT.fullmatch(number_format)
+        if isinstance(number_format, str)
+        else None
+    )
     if (
         isinstance(value, (int, float))
         and not isinstance(value, bool)
         and float(value).is_integer()
-        and isinstance(number_format, str)
-        and number_format
-        and set(number_format) == {"0"}
+        and zero_padded is not None
     ):
-        return f"{int(value):0{len(number_format)}d}"
+        prefix = re.sub(r"\\(.)", r"\1", zero_padded.group("prefix"))
+        return f"{prefix}{int(value):0{len(zero_padded.group('zeros'))}d}"
     return value
 
 

@@ -211,6 +211,10 @@ def _station_info_workbook_bytes() -> bytes:
     ])
     sheet.cell(2, 4).value = 150
     sheet.cell(2, 4).number_format = "0000"
+    sheet.append([
+        "한국철도공사", "경의중앙선", "일반역", 110, "가상역", None, None, None, None, None, None,
+    ])
+    sheet.cell(3, 4).number_format = "\\I000"
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
@@ -219,7 +223,7 @@ def _station_info_workbook_bytes() -> bytes:
 def test_public_station_file_parser_keeps_file_identity_and_unknown_columns():
     rows = parse_nationwide_station_info_xlsx(_station_info_workbook_bytes())
 
-    assert len(rows) == 1
+    assert len(rows) == 2
     row = rows[0]
     assert row.rail_operator_name == "서울교통공사"
     assert row.operating_line_name == "1호선"
@@ -227,6 +231,7 @@ def test_public_station_file_parser_keeps_file_identity_and_unknown_columns():
     assert row.station_name == "서울역"
     assert (row.longitude, row.latitude) == (126.970606, 37.554648)
     assert row.raw["추가 열"] == "원문 보존"
+    assert rows[1].station_number == "I110"
 
     table = parse_xlsx_table(_station_info_workbook_bytes())
     assert table.headers[-1] == "추가 열"
