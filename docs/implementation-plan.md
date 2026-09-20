@@ -75,7 +75,9 @@ KRIC의 신청 절차는 [Open API 이용 절차](https://data.kric.go.kr/rips/s
 두 API의 모델은 항구·터미널·선박종류·계획 운항·연안여객선 스케줄을 typed dataclass로
 반환한다. 제공자가 문서화한 코드, 날짜, 시각, 요금은 문자열 그대로 두고, 알려지지 않은 필드는
 `raw`에 보존한다. TAGO 응답의 문서상 필드명 `vihicleNm` 오탈자는 provider 경계에서만
-`vessel_name`으로 매핑한다.
+`vessel_name`으로 매핑한다. KOMSA `filters`는 필수 typed 필드를 제외할 수 있어 제공하지
+않으며, endpoint는 고정하고 redirect를 거부해 서비스키 전송 범위를 `apis.data.go.kr`으로
+한정한다.
 
 ## 수용 기준
 

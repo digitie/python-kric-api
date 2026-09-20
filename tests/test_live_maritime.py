@@ -26,13 +26,15 @@ async def test_maritime_api_accepts_the_configured_data_go_service_key():
         ports = await client.search_ports(name="인천", num_of_rows=1)
         if not ports or not ports[0].port_id:
             pytest.skip("live 조회에서 출항 항구를 찾지 못했습니다.")
-        operations = await client.get_domestic_ship_operations(
-            departure_port_id=ports[0].port_id, departure_date=date.today(), num_of_rows=1
-        )
-        if not operations or not operations[0].vessel_name:
-            pytest.skip("live 조회에서 국내선박 운항을 찾지 못했습니다.")
         schedules = await client.get_coastal_ferry_schedules(
-            schedule_date=date.today(), vessel_name=operations[0].vessel_name, num_of_rows=1
+            schedule_date=date.today(),
+            vessel_name=os.getenv("DATA_GO_KR_LIVE_MARITIME_VESSEL_NAME", "코리아프라이드"),
+            num_of_rows=1,
         )
 
-    assert isinstance(schedules, tuple)
+    if not schedules:
+        pytest.skip("live 조회일에 검증 대상 여객선의 스케줄이 없습니다.")
+    assert all(
+        row.schedule_date and row.departure_time and row.vessel_code and row.vessel_name
+        for row in schedules
+    )

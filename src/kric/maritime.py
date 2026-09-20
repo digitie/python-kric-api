@@ -41,16 +41,12 @@ class DataGoKrMaritimeClient:
         self,
         service_key: str,
         *,
-        domestic_ship_base_url: str = DOMESTIC_SHIP_BASE_URL,
-        coastal_schedule_base_url: str = COASTAL_SCHEDULE_BASE_URL,
         timeout: float = 30.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.service_key = _required_text(service_key, "service_key")
         if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
             raise KricInvalidParameterError("timeout must be a positive finite number")
-        self.domestic_ship_base_url = _base_url(domestic_ship_base_url, "domestic_ship_base_url")
-        self.coastal_schedule_base_url = _base_url(coastal_schedule_base_url, "coastal_schedule_base_url")
         self._client = client or httpx.AsyncClient(timeout=timeout)
         self._owns_client = client is None
 
@@ -72,7 +68,7 @@ class DataGoKrMaritimeClient:
         params = _page_params(page_no, num_of_rows)
         if name is not None:
             params["nodeNm"] = _required_text(name, "name")
-        payload = await self._get(self.domestic_ship_base_url, "GetPortList", params, response_type="_type")
+        payload = await self._get(DOMESTIC_SHIP_BASE_URL, "GetPortList", params, response_type="_type")
         return tuple(_parse_port(row) for row in _extract_items_or_empty(payload))
 
     async def get_domestic_ship_operations(
@@ -85,20 +81,20 @@ class DataGoKrMaritimeClient:
             "depPlandTime": _date_text(departure_date, "departure_date"),
         })
         payload = await self._get(
-            self.domestic_ship_base_url, "GetShipOpratInfoList", params, response_type="_type"
+            DOMESTIC_SHIP_BASE_URL, "GetShipOpratInfoList", params, response_type="_type"
         )
         return tuple(_parse_domestic_operation(row) for row in _extract_items_or_empty(payload))
 
     async def get_ferry_terminals(self) -> tuple[FerryTerminal, ...]:
         """국내선박운항정보가 제공하는 여객선 터미널 기준정보를 조회한다."""
         payload = await self._get(
-            self.domestic_ship_base_url, "GetPsnshipTrminlList", {}, response_type="_type"
+            DOMESTIC_SHIP_BASE_URL, "GetPsnshipTrminlList", {}, response_type="_type"
         )
         return tuple(_parse_terminal(row) for row in _extract_items_or_empty(payload))
 
     async def get_ferry_ship_types(self) -> tuple[FerryShipType, ...]:
         """국내선박운항정보가 제공하는 여객선 종류 기준정보를 조회한다."""
-        payload = await self._get(self.domestic_ship_base_url, "GetShipKndList", {}, response_type="_type")
+        payload = await self._get(DOMESTIC_SHIP_BASE_URL, "GetShipKndList", {}, response_type="_type")
         return tuple(_parse_ship_type(row) for row in _extract_items_or_empty(payload))
 
     async def get_coastal_ferry_schedules(
@@ -108,7 +104,6 @@ class DataGoKrMaritimeClient:
         vessel_name: str,
         page_no: int = 1,
         num_of_rows: int = 100,
-        filters: str | None = None,
     ) -> tuple[CoastalFerrySchedule, ...]:
         """KOMSA 연안여객선의 특정 날짜·여객선 운항 스케줄을 조회한다."""
         params = _page_params(page_no, num_of_rows)
@@ -116,10 +111,8 @@ class DataGoKrMaritimeClient:
             "rlvtYmd": _date_text(schedule_date, "schedule_date"),
             "psnshpNm": _required_text(vessel_name, "vessel_name"),
         })
-        if filters is not None:
-            params["filters"] = _required_text(filters, "filters")
         payload = await self._get(
-            self.coastal_schedule_base_url, "get-oprt-schd-info-v2", params, response_type="dataType"
+            COASTAL_SCHEDULE_BASE_URL, "get-oprt-schd-info-v2", params, response_type="dataType"
         )
         return tuple(_parse_coastal_schedule(row) for row in _extract_items_or_empty(payload))
 
@@ -128,13 +121,17 @@ class DataGoKrMaritimeClient:
     ) -> Mapping[str, Any]:
         request_params = {"serviceKey": self.service_key, response_type: "JSON", **params}
         try:
-            response = await self._client.get(f"{base_url}/{operation}", params=request_params)
+            response = await self._client.get(
+                f"{base_url}/{operation}", params=request_params, follow_redirects=False
+            )
         except httpx.HTTPError as exc:
             raise KricNetworkError("data.go.kr maritime request failed") from exc
         if response.status_code in (401, 403):
             raise KricAuthError(f"data.go.kr maritime request denied: HTTP {response.status_code}")
         if response.status_code == 429:
             raise KricRateLimitError("data.go.kr maritime request rate limited: HTTP 429")
+        if 300 <= response.status_code < 400:
+            raise KricServerError(f"data.go.kr maritime redirect denied: HTTP {response.status_code}")
         if response.status_code >= 400:
             raise KricServerError(f"data.go.kr maritime request failed: HTTP {response.status_code}")
         try:
@@ -146,13 +143,6 @@ class DataGoKrMaritimeClient:
         if _raise_for_error_envelope(payload):
             return {"body": {"items": [], "totalCount": 0}}
         return payload
-
-
-def _base_url(value: str, name: str) -> str:
-    url = _required_text(value, name).rstrip("/")
-    if not url.startswith("https://"):
-        raise KricInvalidParameterError(f"{name} must be an HTTPS URL")
-    return url
 
 
 def _required_text(value: str, name: str) -> str:

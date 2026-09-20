@@ -393,7 +393,7 @@ async def test_coastal_schedule_uses_documented_required_query_and_preserves_cod
     )
     async with DataGoKrMaritimeClient("data-go-test-key") as client:
         rows = await client.get_coastal_ferry_schedules(
-            schedule_date="20260921", vessel_name="가상호", filters="psnshp_cd,psnshp_nm"
+            schedule_date="20260921", vessel_name="가상호"
         )
 
     assert route.called
@@ -401,7 +401,7 @@ async def test_coastal_schedule_uses_documented_required_query_and_preserves_cod
     assert params["dataType"] == "JSON"
     assert params["rlvtYmd"] == "20260921"
     assert params["psnshpNm"] == "가상호"
-    assert params["filters"] == "psnshp_cd,psnshp_nm"
+    assert "filters" not in params
     assert isinstance(rows[0], CoastalFerrySchedule)
     assert rows[0].vessel_code == "0007"
     assert rows[0].operation_status_name == "정상"
@@ -448,3 +448,21 @@ async def test_empty_result_without_a_pagination_count_is_a_schema_error():
     async with DataGoKrMaritimeClient("data-go-test-key") as client:
         with pytest.raises(KricServerError, match="totalCount"):
             await client.get_ferry_ship_types()
+
+
+async def test_maritime_client_rejects_redirects_even_when_the_injected_client_follows_them():
+    requested_hosts: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested_hosts.append(request.url.host)
+        return httpx.Response(302, headers={"location": "https://redirected.invalid/metadata"})
+
+    injected_client = httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=True)
+    try:
+        async with DataGoKrMaritimeClient("data-go-test-key", client=injected_client) as client:
+            with pytest.raises(KricServerError, match="redirect denied"):
+                await client.search_ports()
+    finally:
+        await injected_client.aclose()
+
+    assert requested_hosts == ["apis.data.go.kr"]
