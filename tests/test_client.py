@@ -276,6 +276,13 @@ def test_public_file_parser_rejects_invalid_or_oversized_input():
         parse_xlsx_table(content, max_compressed_bytes=1)
     with pytest.raises(KricInvalidParameterError, match="HTTPS URL"):
         KricFileClient(download_url=None)  # type: ignore[arg-type]
+    with pytest.raises(KricInvalidParameterError, match="data.kric.go.kr"):
+        KricFileClient(download_url="https://127.0.0.1")
+    with pytest.raises(KricInvalidParameterError, match="valid HTTPS URL"):
+        KricFileClient(download_url="https://data.kric.go.kr:bad")
+    for invalid_timeout in (None, True, "1", float("nan")):
+        with pytest.raises(KricInvalidParameterError, match="timeout"):
+            KricFileClient(timeout=invalid_timeout)  # type: ignore[arg-type]
 
 
 @respx.mock

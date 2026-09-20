@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from io import BytesIO
+from math import isfinite
 import re
 from typing import Any
 from zipfile import BadZipFile, ZipFile
@@ -22,6 +23,7 @@ from .models import FileStationInfo, KricFileDownload, KricFileTable
 from .parse import as_raw_mapping, float_or_none, require_fields, string_or_none
 
 FILE_DOWNLOAD_URL = "https://data.kric.go.kr/rips/dataset/download.file"
+KRIC_FILE_HOST = "data.kric.go.kr"
 NATIONWIDE_STATION_INFO_DATASET_ID = 1294
 DEFAULT_MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024
 DEFAULT_MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
@@ -51,7 +53,12 @@ class KricFileClient:
         max_columns: int = DEFAULT_MAX_COLUMNS,
         client: httpx.AsyncClient | None = None,
     ) -> None:
-        if timeout <= 0:
+        if (
+            isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or not isfinite(timeout)
+            or timeout <= 0
+        ):
             raise KricInvalidParameterError("timeout must be positive")
         self.download_url = _https_url(download_url, "download_url")
         _positive_integer(max_download_bytes, "max_download_bytes")
@@ -267,10 +274,10 @@ def _https_url(value: object, name: str) -> str:
         raise KricInvalidParameterError(f"{name} must be a non-blank HTTPS URL")
     try:
         parsed = httpx.URL(value)
-    except TypeError as exc:
+    except (TypeError, httpx.InvalidURL) as exc:
         raise KricInvalidParameterError(f"{name} must be a valid HTTPS URL") from exc
-    if parsed.scheme != "https" or not parsed.host:
-        raise KricInvalidParameterError(f"{name} must be a non-blank HTTPS URL")
+    if parsed.scheme != "https" or parsed.host != KRIC_FILE_HOST or parsed.port not in (None, 443):
+        raise KricInvalidParameterError(f"{name} must be an HTTPS URL for {KRIC_FILE_HOST}")
     return str(parsed)
 
 
