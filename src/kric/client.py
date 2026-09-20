@@ -81,12 +81,21 @@ class KricClient:
     async def get_subway_route_info(
         self, *, metro_area_code: str, line_code: str
     ) -> tuple[SubwayRouteStop, ...]:
-        """권역·노선의 구성역을 route code별 station sequence 순서로 반환한다."""
+        """provider의 route 그룹 순서와 각 그룹의 station sequence 순서를 보존해 반환한다."""
         rows = parse_many(await self._get("trainUseInfo/subwayRouteInfo", {
             "mreaWideCd": _required(metro_area_code, "metro_area_code"),
             "lnCd": _required(line_code, "line_code"),
         }), parse_subway_route_stop)
-        return tuple(sorted(rows, key=lambda row: (row.route_code or "", row.station_sequence or 0)))
+        group_order: dict[str, int] = {}
+        for row in rows:
+            group_order.setdefault(row.route_code or "", len(group_order))
+        ordered_rows = sorted(
+            enumerate(rows),
+            key=lambda pair: (
+                group_order[pair[1].route_code or ""], pair[1].station_sequence or 0, pair[0]
+            ),
+        )
+        return tuple(row for _, row in ordered_rows)
 
     async def get_station_timetable(
         self, *, rail_operator_code: str, line_code: str, station_code: str, day_code: ServiceDayCode | str

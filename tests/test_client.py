@@ -45,16 +45,16 @@ async def test_station_info_sends_documented_json_parameters():
 async def test_route_keeps_route_groups_order_and_repeated_station():
     respx.get("https://openapi.kric.go.kr/openapi/trainUseInfo/subwayRouteInfo").mock(
         return_value=httpx.Response(200, json={"header": {"resultCode": "00"}, "body": {"items": {"item": [
-            {"mreaWideCd": "01", "lnCd": "2", "routCd": "R1", "stinCd": "201", "stinNm": "순환역", "stinConsOrdr": "44"},
-            {"mreaWideCd": "01", "lnCd": "2", "routCd": "R2", "stinCd": "202", "stinNm": "분기역", "stinConsOrdr": "1"},
-            {"mreaWideCd": "01", "lnCd": "2", "routCd": "R1", "stinCd": "201", "stinNm": "순환역", "stinConsOrdr": "1"},
+            {"mreaWideCd": "01", "railOprIsttCd": "S1", "lnCd": "2", "routCd": "R2", "stinCd": "202", "stinNm": "분기역", "stinConsOrdr": "1"},
+            {"mreaWideCd": "01", "railOprIsttCd": "S1", "lnCd": "2", "routCd": "R1", "stinCd": "201", "stinNm": "순환역", "stinConsOrdr": "44"},
+            {"mreaWideCd": "01", "railOprIsttCd": "S1", "lnCd": "2", "routCd": "R1", "stinCd": "201", "stinNm": "순환역", "stinConsOrdr": "1"},
         ]}}})
     )
     async with KricClient("test-key") as client:
         rows = await client.get_subway_route_info(metro_area_code="01", line_code="2")
 
     assert [(row.route_code, row.station_code, row.station_sequence) for row in rows] == [
-        ("R1", "201", 1), ("R1", "201", 44), ("R2", "202", 1)
+        ("R2", "202", 1), ("R1", "201", 1), ("R1", "201", 44)
     ]
 
 
@@ -161,7 +161,9 @@ def test_parser_rejects_bad_shapes_and_numeric_contracts():
     assert parse_subway_timetable_entry({
         "railOprIsttCd": "S1", "lnCd": "1", "stinCd": "0150", "dayCd": "7", "trnNo": "001"
     }).train_number == "001"
-    assert parse_station_facility({"stinCd": "0150", "blank": " "}).values["blank"] is None
+    assert parse_station_facility({
+        "railOprIsttCd": "S1", "lnCd": "1", "stinCd": "0150", "blank": " "
+    }).values["blank"] is None
     for invalid_coordinate in ("north", "NaN", "Infinity", "-Infinity"):
         with pytest.raises(KricServerError, match="numeric"):
             float_or_none(invalid_coordinate, "latitude")
@@ -170,7 +172,7 @@ def test_parser_rejects_bad_shapes_and_numeric_contracts():
     with pytest.raises(KricServerError, match="does not contain"):
         extract_items({"header": {"resultCode": "00"}})
     with pytest.raises(KricServerError, match="stationInfo item"):
-        parse_station_info({"stinCd": "150"})
+        parse_station_info({"stinCd": "150", "stinNm": "서울역"})
 
 
 async def test_client_rejects_blank_or_unsafe_requests_before_network():

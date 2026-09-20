@@ -95,7 +95,7 @@ def service_day_code(value: Any) -> ServiceDayCode | str | None:
 
 def parse_station_info(row: Mapping[str, Any]) -> StationInfo:
     raw = as_raw_mapping(row)
-    require_fields(raw, "stationInfo item", "stinCd", "stinNm")
+    require_fields(raw, "stationInfo item", "railOprIsttCd", "lnCd", "stinCd", "stinNm")
     return StationInfo(
         rail_operator_code=raw.get("railOprIsttCd"), line_code=raw.get("lnCd"),
         station_code=raw.get("stinCd"), station_name=raw.get("stinNm"),
@@ -112,7 +112,7 @@ def parse_station_info(row: Mapping[str, Any]) -> StationInfo:
 
 def parse_subway_route_stop(row: Mapping[str, Any]) -> SubwayRouteStop:
     raw = as_raw_mapping(row)
-    require_fields(raw, "subwayRouteInfo item", "routCd", "stinCd", "stinConsOrdr")
+    require_fields(raw, "subwayRouteInfo item", "railOprIsttCd", "lnCd", "routCd", "stinCd", "stinConsOrdr")
     return SubwayRouteStop(
         metro_area_code=raw.get("mreaWideCd"), rail_operator_code=raw.get("railOprIsttCd"),
         line_code=raw.get("lnCd"), route_code=raw.get("routCd"), route_name=raw.get("routNm"),
@@ -146,7 +146,7 @@ def parse_subway_timetable_entry(row: Mapping[str, Any]) -> SubwayTimetableEntry
 
 def parse_station_facility(row: Mapping[str, Any]) -> StationFacility:
     raw = as_raw_mapping(row)
-    require_fields(raw, "stationCnvFacl item", "stinCd")
+    require_fields(raw, "stationCnvFacl item", "railOprIsttCd", "lnCd", "stinCd")
     return StationFacility(
         rail_operator_code=raw.get("railOprIsttCd"), line_code=raw.get("lnCd"),
         station_code=raw.get("stinCd"), values=raw,
