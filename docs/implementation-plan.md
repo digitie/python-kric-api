@@ -7,6 +7,10 @@
 스케줄러·PostgreSQL·FastAPI를 구현하지 않으며, 소비자 `kor-travel-transport`가 주기 저장과
 즉시 조회를 맡는다.
 
+공공데이터포털의 국내선박·연안여객선 API도 여행 이동 연결을 위해 이 패키지에서 provider
+계약으로 제공한다. KRIC 키와 같은 client에 섞지 않고, 별도 `DataGoKrMaritimeClient`가
+`DATA_GO_KR_SERVICE_KEY`만 받는다.
+
 서비스키는 아직 발급되지 않았다. JSON client와 네트워크 없는 parser/test scaffold는
 구현됐으며, 실제 성공 응답 envelope와 역 편의시설 세부 필드는 아래 API 신청 뒤 키를
 제거한 fixture로 확정해야 한다.
@@ -61,6 +65,18 @@ KRIC의 신청 절차는 [Open API 이용 절차](https://data.kric.go.kr/rips/s
 4. 공식 샘플 또는 허가된 1회 live 호출을 fixture로 정리한 뒤 `@pytest.mark.live` smoke를 추가한다.
 5. README·구현 상태·변경 기록을 갱신하고 두 적대적 리뷰와 CI를 통과한다.
 
+## 공공데이터포털 여객선 provider
+
+| 제공자·API | client 메서드 | 필수 선택 기준 | 수집·운영 주의점 |
+|---|---|---|---|
+| 국토교통부 `(TAGO) 국내선박운항정보` | `search_ports`, `get_domestic_ship_operations`, `get_ferry_terminals`, `get_ferry_ship_types` | 운항은 `depNodeId`, `depPlandTime(YYYYMMDD)` | 기준정보와 계획 운항을 분리 저장하고, 자동 페이지 순회·재시도를 하지 않는다. |
+| 한국해양교통안전공단 `운항 스케줄 정보` | `get_coastal_ferry_schedules` | `rlvtYmd(YYYYMMDD)`, `psnshpNm` | 개발계정 일일 100건 안내를 넘지 않도록 소비 서비스가 요청·수집 예산을 관리한다. 운영계정은 별도 활용신청 대상이다. |
+
+두 API의 모델은 항구·터미널·선박종류·계획 운항·연안여객선 스케줄을 typed dataclass로
+반환한다. 제공자가 문서화한 코드, 날짜, 시각, 요금은 문자열 그대로 두고, 알려지지 않은 필드는
+`raw`에 보존한다. TAGO 응답의 문서상 필드명 `vihicleNm` 오탈자는 provider 경계에서만
+`vessel_name`으로 매핑한다.
+
 ## 수용 기준
 
 - 안정 API별 요청 파라미터 사전 검증과 오류 타입이 있다.
@@ -68,3 +84,4 @@ KRIC의 신청 절차는 [Open API 이용 절차](https://data.kric.go.kr/rips/s
 - 기본 테스트는 네트워크와 키 없이 동작하며 90% 이상의 커버리지를 만족한다.
 - CRS가 확인되기 전 `mapCordX`/`mapCordY`의 좌표 변환을 제공하지 않는다.
 - KRIC 응답의 파싱 책임이 소비 서비스에 중복 구현되지 않는다.
+- 공공데이터포털 여객선 API는 KRIC 키와 분리된 client·오류 경계·테스트를 가진다.

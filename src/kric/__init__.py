@@ -7,6 +7,7 @@ from .files import (
     parse_xlsx_table,
     parse_nationwide_station_info_xlsx,
 )
+from .maritime import DataGoKrMaritimeClient
 from .exceptions import (
     KricAuthError,
     KricError,
@@ -18,6 +19,11 @@ from .exceptions import (
 from .models import (
     ServiceDayCode,
     FileStationInfo,
+    CoastalFerrySchedule,
+    DomesticFerryPort,
+    DomesticShipOperation,
+    FerryShipType,
+    FerryTerminal,
     KricFileDownload,
     KricFileTable,
     StationFacility,
@@ -30,6 +36,7 @@ from .models import (
 __all__ = [
     "KricAuthError",
     "KricClient",
+    "DataGoKrMaritimeClient",
     "KricFileClient",
     "KricError",
     "KricInvalidParameterError",
@@ -38,6 +45,11 @@ __all__ = [
     "KricServerError",
     "ServiceDayCode",
     "FileStationInfo",
+    "CoastalFerrySchedule",
+    "DomesticFerryPort",
+    "DomesticShipOperation",
+    "FerryShipType",
+    "FerryTerminal",
     "KricFileDownload",
     "KricFileTable",
     "NATIONWIDE_STATION_INFO_DATASET_ID",

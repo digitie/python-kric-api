@@ -50,6 +50,44 @@ asyncio.run(main())
 - `get_subway_timetable()` → `trainUseInfo/subwayTimetable`
 - `get_station_facilities()` → `convenientInfo/stationCnvFacl`
 
+## 공공데이터포털 여객선 API
+
+국내선박운항정보와 연안여객선 운항 스케줄은 KRIC와 다른 제공자이므로
+`DataGoKrMaritimeClient`로 분리합니다. KRIC 서비스키를 재사용하지 말고, 공공데이터포털에
+신청한 `DATA_GO_KR_SERVICE_KEY`를 전달하세요. 이 client는 저장·스케줄링·FastAPI를 포함하지
+않고, 한 번의 호출에서 요청한 페이지 하나만 반환합니다.
+
+```python
+import os
+
+from kric import DataGoKrMaritimeClient
+
+
+async with DataGoKrMaritimeClient(os.environ["DATA_GO_KR_SERVICE_KEY"]) as client:
+    ports = await client.search_ports(name="인천")
+    sailings = await client.get_domestic_ship_operations(
+        departure_port_id=ports[0].port_id,
+        departure_date="20260921",
+    )
+    schedules = await client.get_coastal_ferry_schedules(
+        schedule_date="20260921", vessel_name="여객선명",
+    )
+```
+
+- `search_ports()` → 국토교통부 `(TAGO) 국내선박운항정보`의 `GetPortList`
+- `get_domestic_ship_operations()` → `GetShipOpratInfoList`
+- `get_ferry_terminals()` → `GetPsnshipTrminlList`
+- `get_ferry_ship_types()` → `GetShipKndList`
+- `get_coastal_ferry_schedules()` → 한국해양교통안전공단 `운항 스케줄 정보`의
+  `get-oprt-schd-info-v2`
+
+TAGO 운항정보의 제공 필드 오탈자인 `vihicleNm`은 원문 `raw`에 그대로 보존하고,
+공개 모델에서는 `vessel_name`으로 제공합니다. 날짜·시각·요금·코드는 추정 변환하지 않습니다.
+운항 스케줄 API는 개발계정 기준 일일 100건으로 안내되므로, 운영 호출량은 승인 범위에 맞춰
+소비 서비스에서 제한해야 합니다. 키·응답에 포함될 수 있는 민감한 값을 로그나 fixture에 남기지
+마세요. KOMSA가 `153` (`NOT_FOUND_DATA`)를 반환하면 이는 해당 날짜·여객선의 빈 결과로
+간주해 빈 tuple을 반환합니다.
+
 ## 공개 파일 데이터
 
 API 키가 필요 없고 갱신 주기가 낮은 기준정보는 공개 파일을 우선 사용합니다. 현재
@@ -82,6 +120,15 @@ async with KricFileClient() as client:
 
 ```bash
 KRIC_LIVE_FILES=1 python -m pytest -m live tests/test_live_files.py -q
+```
+
+공공데이터포털 여객선 API의 승인·빈 결과 계약은 다음처럼 선택적으로 확인합니다. 테스트는
+항구 1건, 그 항구의 당일 계획 운항 1건, 해당 선박의 당일 연안 스케줄 1건만 요청하며,
+계획 운항이 없으면 실패가 아니라 skip으로 끝납니다.
+
+```bash
+DATA_GO_KR_LIVE_MARITIME=1 DATA_GO_KR_SERVICE_KEY="..." \
+  python -m pytest -m live tests/test_live_maritime.py -q
 ```
 
 신청 대상과 구현 순서는 [docs/implementation-plan.md](docs/implementation-plan.md)를 참고하세요.
