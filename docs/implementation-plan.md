@@ -30,8 +30,9 @@
 경도·위도 열만 `float`으로 해석하고, API의 `mapCordX`/`mapCordY`와 결합하지 않는다.
 공개 XLSX는 다운로드 10 MiB, 압축 해제 64 MiB, 첫 worksheet 100,000행·256열 기본 상한을
 적용한다. Excel의 0 패딩 및 이스케이프 접두사 번호 표시 형식은 문자열로 보존한다.
-소비 서비스가 공용 RustFS 보관을 요청하면 `download_dataset_to_rustfs()`가 같은 원문을
-결정적 SHA-256 key로 S3 호환 저장소에 비동기 저장한다. 파일 원문은 DB JSONB에 넣지 않는다.
+소비 서비스가 공용 RustFS 보관을 요청하면 `download_dataset_to_rustfs()`가 형식을 단정하지
+않은 원문을 결정적 SHA-256 key로 S3 호환 저장소에 비동기 저장한다. dataset `1294`처럼 XLSX
+계약을 검증한 경로는 검증을 마친 뒤에만 `.xlsx` 객체로 보관한다. 파일 원문은 DB JSONB에 넣지 않는다.
 
 ## 1단계: 안정 파서 대상
 

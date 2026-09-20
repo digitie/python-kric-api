@@ -121,23 +121,29 @@ async with KricFileClient() as client:
 공용 RustFS에 파일 원문을 함께 보관하려면 S3 호환 `RustfsObjectStore`를 명시적으로 만들고
 `download_dataset_to_rustfs()` 또는 `get_nationwide_station_info_to_rustfs()`를 사용합니다.
 모든 저장 API는 `async`이며, 내부 boto3 호출은 worker thread로 넘겨 event loop를 막지 않습니다.
+기본값은 HTTPS endpoint만 허용합니다. Manager가 관리하는 loopback RustFS처럼 TLS 종단이 없는
+사설 host-network 연결은 위험을 이해한 소비자만 `allow_insecure_http=True`를 명시합니다.
+store는 `async with`로 닫아 HTTP 연결 풀을 회수합니다.
 
 ```python
 from kric import KricFileClient, RustfsObjectStore
 
-store = RustfsObjectStore.from_s3_compatible_settings(
-    endpoint_url="http://rustfs:9000",
+async with RustfsObjectStore.from_s3_compatible_settings(
+    endpoint_url="https://rustfs.internal.example",
     bucket="kor-travel-transport-raw",
     access_key_id="...",
     secret_access_key="...",
-)
-async with KricFileClient() as client:
-    stations, stored = await client.get_nationwide_station_info_to_rustfs(store)
-    print(stored.object_key, len(stations))
+) as store:
+    async with KricFileClient() as client:
+        stations, stored = await client.get_nationwide_station_info_to_rustfs(store)
+        print(stored.object_key, len(stations))
 ```
 
-객체 key는 `provider-raw/kric/dataset-<id>/operation-<id>/<sha256>.xlsx`로 결정한다.
-동일 원문은 같은 key로 덮어써 재수집이 idempotent하며, DB·스케줄링 책임은 계속 소비 서비스에 있다.
+범용 `download_dataset_to_rustfs()` 객체 key는
+`provider-raw/kric/dataset-<id>/operation-<id>/<sha256>`로 결정하며 원본 `Content-Type`을
+보존한다. XLSX로 검증한 `get_nationwide_station_info_to_rustfs()`만 `.xlsx` suffix와 XLSX MIME
+type을 사용한다. 동일 원문은 같은 key로 덮어써 재수집이 idempotent하며, DB·스케줄링 책임은
+계속 소비 서비스에 있다.
 
 실제 공개 파일 계약은 서비스키 없이 다음처럼 선택적으로 확인할 수 있습니다.
 

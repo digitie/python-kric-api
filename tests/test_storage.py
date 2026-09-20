@@ -3,17 +3,27 @@ from __future__ import annotations
 import hashlib
 
 import pytest
+from botocore.exceptions import ClientError
 
-from kric import KricInvalidParameterError, RustfsObjectStore
+from kric import (
+    KricAuthError,
+    KricInvalidParameterError,
+    KricStorageConfigurationError,
+    RustfsObjectStore,
+)
 
 
 class FakeS3Client:
     def __init__(self) -> None:
         self.objects: dict[tuple[str, str], dict] = {}
+        self.close_calls = 0
 
     def put_object(self, **kwargs):
         self.objects[(kwargs["Bucket"], kwargs["Key"])] = kwargs
         return {"ETag": '"etag-1"'}
+
+    def close(self) -> None:
+        self.close_calls += 1
 
 
 @pytest.mark.asyncio
@@ -40,3 +50,56 @@ async def test_rustfs_store_rejects_unsafe_object_keys(object_key: str) -> None:
 
     with pytest.raises(KricInvalidParameterError):
         await store.put_bytes(object_key=object_key, body=b"x")
+
+
+def test_rustfs_factory_requires_https_unless_explicit_internal_opt_in() -> None:
+    with pytest.raises(KricStorageConfigurationError, match="HTTPS"):
+        RustfsObjectStore.from_s3_compatible_settings(
+            endpoint_url="http://127.0.0.1:12101",
+            bucket="kor-travel-raw",
+            access_key_id="access",
+            secret_access_key="secret",
+        )
+    store = RustfsObjectStore.from_s3_compatible_settings(
+        endpoint_url="http://127.0.0.1:12101",
+        bucket="kor-travel-raw",
+        access_key_id="access",
+        secret_access_key="secret",
+        allow_insecure_http=True,
+    )
+    assert store.bucket == "kor-travel-raw"
+
+
+@pytest.mark.asyncio
+async def test_rustfs_store_classifies_auth_errors_and_closes_once() -> None:
+    class DeniedClient(FakeS3Client):
+        def put_object(self, **kwargs):
+            raise ClientError(
+                {"Error": {"Code": "AccessDenied"}, "ResponseMetadata": {"HTTPStatusCode": 403}},
+                "PutObject",
+            )
+
+    client = DeniedClient()
+    store = RustfsObjectStore(client, bucket="kor-travel-raw")
+    with pytest.raises(KricAuthError):
+        await store.put_bytes(object_key="file", body=b"x")
+
+    await store.aclose()
+    await store.aclose()
+    assert client.close_calls == 1
+    with pytest.raises(KricStorageConfigurationError, match="closed"):
+        await store.put_bytes(object_key="file", body=b"x")
+
+
+@pytest.mark.asyncio
+async def test_rustfs_store_classifies_missing_bucket_as_configuration_error() -> None:
+    class MissingBucketClient(FakeS3Client):
+        def put_object(self, **kwargs):
+            raise ClientError(
+                {"Error": {"Code": "NoSuchBucket"}, "ResponseMetadata": {"HTTPStatusCode": 404}},
+                "PutObject",
+            )
+
+    store = RustfsObjectStore(MissingBucketClient(), bucket="kor-travel-raw")
+    with pytest.raises(KricStorageConfigurationError, match="bucket"):
+        await store.put_bytes(object_key="file", body=b"x")

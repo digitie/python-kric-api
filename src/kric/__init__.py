@@ -16,6 +16,7 @@ from .exceptions import (
     KricNetworkError,
     KricRateLimitError,
     KricServerError,
+    KricStorageConfigurationError,
 )
 from .models import (
     ServiceDayCode,
@@ -46,6 +47,7 @@ __all__ = [
     "KricNetworkError",
     "KricRateLimitError",
     "KricServerError",
+    "KricStorageConfigurationError",
     "ServiceDayCode",
     "FileStationInfo",
     "CoastalFerrySchedule",

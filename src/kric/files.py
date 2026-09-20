@@ -143,43 +143,54 @@ class KricFileClient:
         dataset_id: int,
         operation: int = 1,
     ) -> tuple[KricFileDownload, StoredObject]:
-        """공개 파일을 내려받아 원문을 공용 RustFS에 보관한다.
+        """공개 파일을 내려받아 형식을 단정하지 않고 공용 RustFS에 보관한다.
 
         object key는 dataset·operation·SHA-256에 의해 결정돼 같은 원문 재수집은
-        같은 객체를 덮어쓴다. 이 메서드는 파일 parse나 소비 서비스 DB 적재를 하지 않는다.
+        같은 객체를 덮어쓴다. 범용 공개 파일은 XLSX라고 가정하지 않아 확장자 없는 key와
+        provider가 보낸 `Content-Type`(없으면 `application/octet-stream`)을 사용한다.
+        이 메서드는 파일 parse나 소비 서비스 DB 적재를 하지 않는다.
         """
         download = await self.download_dataset(dataset_id=dataset_id, operation=operation)
-        checksum = hashlib.sha256(download.content).hexdigest()
-        content_type = download.content_type or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        stored = await store.put_bytes(
-            object_key=store.prefixed_key(
-                "kric",
-                f"dataset-{download.dataset_id}",
-                f"operation-{download.operation}",
-                f"{checksum}.xlsx",
-            ),
-            body=download.content,
-            content_type=content_type,
-        )
-        return download, stored
+        return download, await self._archive_download(store, download)
 
     async def get_nationwide_station_info_to_rustfs(
         self, store: RustfsObjectStore
     ) -> tuple[tuple[FileStationInfo, ...], StoredObject]:
-        """dataset 1294를 parse하고 같은 원문 XLSX를 RustFS에 보관한다."""
-        download, stored = await self.download_dataset_to_rustfs(
-            store,
-            dataset_id=NATIONWIDE_STATION_INFO_DATASET_ID,
+        """검증한 dataset 1294 XLSX만 RustFS에 보관하고 typed 역사정보를 반환한다."""
+        download = await self.download_dataset(dataset_id=NATIONWIDE_STATION_INFO_DATASET_ID)
+        stations = parse_nationwide_station_info_xlsx(
+            download.content,
+            max_compressed_bytes=self.max_download_bytes,
+            max_uncompressed_bytes=self.max_uncompressed_bytes,
+            max_rows=self.max_rows,
+            max_columns=self.max_columns,
         )
-        return (
-            parse_nationwide_station_info_xlsx(
-                download.content,
-                max_compressed_bytes=self.max_download_bytes,
-                max_uncompressed_bytes=self.max_uncompressed_bytes,
-                max_rows=self.max_rows,
-                max_columns=self.max_columns,
+        stored = await self._archive_download(
+            store,
+            download,
+            suffix=".xlsx",
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        return stations, stored
+
+    async def _archive_download(
+        self,
+        store: RustfsObjectStore,
+        download: KricFileDownload,
+        *,
+        suffix: str = "",
+        content_type: str | None = None,
+    ) -> StoredObject:
+        checksum = hashlib.sha256(download.content).hexdigest()
+        return await store.put_bytes(
+            object_key=store.prefixed_key(
+                "kric",
+                f"dataset-{download.dataset_id}",
+                f"operation-{download.operation}",
+                f"{checksum}{suffix}",
             ),
-            stored,
+            body=download.content,
+            content_type=content_type or download.content_type or "application/octet-stream",
         )
 
 

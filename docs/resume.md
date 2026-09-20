@@ -8,7 +8,8 @@
   live 호출과 KOMSA 빈 결과(`153`) 계약을 검증했다.
 - 공개 XLSX 원문을 공용 RustFS에 비동기 보관할 수 있다. `RustfsObjectStore`는 S3 호환
   boto3 client를 `asyncio.to_thread`로 감싸고, file client는 dataset·operation·SHA-256
-  기반의 idempotent object key를 반환한다.
+  기반의 idempotent object key를 반환한다. HTTPS endpoint가 기본이며, 검증한 XLSX만 `.xlsx`
+  객체로 보관한다. store는 async context manager로 연결 풀을 닫는다.
 - 서비스키 신청 전 단계이며 실제 성공 envelope와 역 편의시설 Open API 세부 필드는 키가 제거된
   fixture로 확인되지 않았다.
 
