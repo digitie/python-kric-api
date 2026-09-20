@@ -23,3 +23,7 @@ class KricNetworkError(KricError):
 
 class KricServerError(KricError):
     """KRIC 오류 응답 또는 문서화되지 않은 응답 구조."""
+
+
+class KricStorageConfigurationError(KricError):
+    """RustFS/S3 endpoint, bucket 또는 저장소 수명주기 설정이 올바르지 않은 경우."""

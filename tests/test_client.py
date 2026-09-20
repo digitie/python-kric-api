@@ -1,3 +1,4 @@
+import hashlib
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -17,6 +18,7 @@ from kric import (
     KricRateLimitError,
     KricServerError,
     ServiceDayCode,
+    StoredObject,
     parse_nationwide_station_info_xlsx,
     parse_xlsx_table,
 )
@@ -258,6 +260,57 @@ async def test_public_file_download_requires_no_service_key_and_parses_station_d
     assert dict(params) == {"type": "filedata", "id": "1294", "operation": "1"}
     assert "serviceKey" not in params
     assert rows[0].station_name == "서울역"
+
+
+class _RecordingStore:
+    def __init__(self) -> None:
+        self.uploads: list[dict[str, object]] = []
+
+    def prefixed_key(self, *parts: str) -> str:
+        return "/".join(("provider-raw", *parts))
+
+    async def put_bytes(self, **kwargs: object) -> StoredObject:
+        self.uploads.append(kwargs)
+        body = kwargs["body"]
+        assert isinstance(body, bytes)
+        return StoredObject(
+            bucket="test-bucket",
+            object_key=str(kwargs["object_key"]),
+            content_type=str(kwargs["content_type"]),
+            byte_size=len(body),
+            checksum_sha256="test-checksum",
+            etag=None,
+        )
+
+
+@respx.mock
+async def test_station_archive_validates_xlsx_before_uploading() -> None:
+    route = respx.get(FILE_DOWNLOAD_URL).mock(
+        return_value=httpx.Response(200, content=b"<html>maintenance</html>", headers={"content-type": "text/html"})
+    )
+    store = _RecordingStore()
+    async with KricFileClient() as client:
+        with pytest.raises(KricServerError, match="readable XLSX"):
+            await client.get_nationwide_station_info_to_rustfs(store)  # type: ignore[arg-type]
+
+    assert route.called
+    assert store.uploads == []
+
+
+@respx.mock
+async def test_generic_file_archive_preserves_content_type_without_forcing_xlsx_suffix() -> None:
+    route = respx.get(FILE_DOWNLOAD_URL).mock(
+        return_value=httpx.Response(200, content=b"a,b\n1,2\n", headers={"content-type": "text/csv"})
+    )
+    store = _RecordingStore()
+    async with KricFileClient() as client:
+        download, stored = await client.download_dataset_to_rustfs(store, dataset_id=7, operation=2)  # type: ignore[arg-type]
+
+    assert route.called
+    assert download.dataset_id == 7
+    assert stored.object_key.endswith(hashlib.sha256(b"a,b\n1,2\n").hexdigest())
+    assert not stored.object_key.endswith(".xlsx")
+    assert stored.content_type == "text/csv"
 
 
 def test_public_station_file_parser_rejects_missing_contract_headers():

@@ -1,0 +1,287 @@
+"""RustFS 등 S3 호환 저장소에 provider 원본 파일을 비동기로 보관한다."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import importlib
+import re
+from dataclasses import dataclass
+from typing import Any, Protocol
+from urllib.parse import urlparse
+
+from .exceptions import (
+    KricAuthError,
+    KricError,
+    KricInvalidParameterError,
+    KricNetworkError,
+    KricRateLimitError,
+    KricServerError,
+    KricStorageConfigurationError,
+)
+
+_BUCKET_RE = re.compile(r"^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$")
+
+
+class S3Client(Protocol):
+    """boto3 S3 client의 이 모듈이 사용하는 최소 표면."""
+
+    def put_object(self, **kwargs: Any) -> dict[str, Any]: ...
+
+    def close(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class StoredObject:
+    """S3 호환 저장소에 기록한 원본 객체의 식별·무결성 메타데이터."""
+
+    bucket: str
+    object_key: str
+    content_type: str
+    byte_size: int
+    checksum_sha256: str
+    etag: str | None
+
+
+class RustfsObjectStore:
+    """boto3 호환 RustFS client를 async API로 감싼 객체 저장소.
+
+    RustFS/MinIO/AWS S3의 endpoint 차이를 `s3_client` 생성 시점으로 한정한다.
+    제공자 파일의 다운로드와 DB 저장은 소비 서비스가 맡고, 이 클래스는 바이트를
+    idempotent object key에 보관하는 책임만 가진다.
+    """
+
+    def __init__(
+        self,
+        s3_client: S3Client,
+        *,
+        bucket: str,
+        prefix: str = "provider-raw",
+        max_concurrent_uploads: int = 2,
+    ) -> None:
+        self.s3_client = s3_client
+        self.bucket = _bucket_name(bucket)
+        self.prefix = _prefix(prefix)
+        if max_concurrent_uploads <= 0:
+            raise KricInvalidParameterError("RustFS max_concurrent_uploads must be positive")
+        self._uploads = asyncio.Semaphore(max_concurrent_uploads)
+        self._state_lock = asyncio.Lock()
+        self._uploads_drained = asyncio.Event()
+        self._uploads_drained.set()
+        self._active_uploads = 0
+        self._closing = False
+        self._closed = False
+        self._close_lock = asyncio.Lock()
+
+    @classmethod
+    def from_s3_compatible_settings(
+        cls,
+        *,
+        endpoint_url: str,
+        bucket: str,
+        access_key_id: str,
+        secret_access_key: str,
+        region_name: str = "us-east-1",
+        prefix: str = "provider-raw",
+        allow_insecure_http: bool = False,
+        max_concurrent_uploads: int = 2,
+    ) -> "RustfsObjectStore":
+        """명시적 공용 RustFS 설정으로 store를 만든다.
+
+        키를 환경에서 자동으로 읽지 않아 provider 호출자가 비밀값의 소유 경계를
+        명확히 유지한다. 생성된 boto3 client의 호출은 `put_bytes`에서 thread로 실행한다.
+        """
+        endpoint = _endpoint_url(endpoint_url, allow_insecure_http=allow_insecure_http)
+        if not access_key_id.strip() or not secret_access_key.strip():
+            raise KricInvalidParameterError("RustFS access key and secret key must not be blank")
+        boto3 = importlib.import_module("boto3")
+        config = importlib.import_module("botocore.config").Config(
+            connect_timeout=5,
+            read_timeout=30,
+            retries={"max_attempts": 2, "mode": "standard"},
+        )
+        client = boto3.client(
+            "s3",
+            endpoint_url=endpoint,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            region_name=region_name,
+            config=config,
+        )
+        return cls(
+            client,
+            bucket=bucket,
+            prefix=prefix,
+            max_concurrent_uploads=max_concurrent_uploads,
+        )
+
+    async def put_bytes(
+        self,
+        *,
+        object_key: str,
+        body: bytes,
+        content_type: str = "application/octet-stream",
+    ) -> StoredObject:
+        """바이트를 저장하고 SHA-256 기반 무결성 메타데이터를 반환한다."""
+        key = _object_key(object_key)
+        if not isinstance(body, bytes) or not body:
+            raise KricInvalidParameterError("RustFS object body must be non-empty bytes")
+        content_type = content_type.strip() or "application/octet-stream"
+        checksum = hashlib.sha256(body).hexdigest()
+        worker = asyncio.create_task(
+            self._run_admitted_upload(
+                object_key=key,
+                body=body,
+                content_type=content_type,
+                checksum=checksum,
+            )
+        )
+        try:
+            response = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            # 호출자 취소가 thread의 boto3 요청을 취소하지는 않는다. worker가 semaphore와
+            # active-upload 수명주기를 끝까지 소유하게 해 close가 HTTP pool을 먼저 닫지 않는다.
+            worker.add_done_callback(self._consume_cancelled_worker_result)
+            raise
+        except Exception as exc:
+            if isinstance(exc, KricError):
+                raise
+            raise _storage_error(exc) from exc
+        etag = response.get("ETag") if isinstance(response, dict) else None
+        return StoredObject(
+            bucket=self.bucket,
+            object_key=key,
+            content_type=content_type,
+            byte_size=len(body),
+            checksum_sha256=checksum,
+            etag=str(etag) if etag is not None else None,
+        )
+
+    def prefixed_key(self, *parts: str) -> str:
+        """provider가 공유 prefix 아래의 결정적 object key를 만들 때 사용한다."""
+        suffix = "/".join(_object_key(part) for part in parts)
+        return f"{self.prefix}/{suffix}" if self.prefix else suffix
+
+    async def aclose(self) -> None:
+        """신규 upload를 닫고, 이미 승인된 upload 뒤 S3 HTTP 연결 풀을 한 번만 닫는다."""
+        async with self._close_lock:
+            if self._closed:
+                return
+            async with self._state_lock:
+                self._closing = True
+            await self._uploads_drained.wait()
+            close = getattr(self.s3_client, "close", None)
+            if callable(close):
+                await asyncio.to_thread(close)
+            self._closed = True
+
+    async def __aenter__(self) -> "RustfsObjectStore":
+        async with self._state_lock:
+            if self._closing or self._closed:
+                raise KricStorageConfigurationError("RustFS object store is closed")
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.aclose()
+
+    async def _begin_upload(self) -> None:
+        async with self._state_lock:
+            if self._closing or self._closed:
+                raise KricStorageConfigurationError("RustFS object store is closed")
+            self._active_uploads += 1
+            self._uploads_drained.clear()
+
+    async def _finish_upload(self) -> None:
+        async with self._state_lock:
+            self._active_uploads -= 1
+            if self._active_uploads == 0:
+                self._uploads_drained.set()
+
+    async def _run_admitted_upload(
+        self,
+        *,
+        object_key: str,
+        body: bytes,
+        content_type: str,
+        checksum: str,
+    ) -> dict[str, Any]:
+        admitted = False
+        try:
+            await self._begin_upload()
+            admitted = True
+            async with self._uploads:
+                return await asyncio.to_thread(
+                    self.s3_client.put_object,
+                    Bucket=self.bucket,
+                    Key=object_key,
+                    Body=body,
+                    ContentType=content_type,
+                    Metadata={"sha256": checksum},
+                )
+        finally:
+            if admitted:
+                await self._finish_upload()
+
+    def _consume_cancelled_worker_result(self, worker: asyncio.Task[dict[str, Any]]) -> None:
+        # background worker의 실패는 취소를 선택한 호출자에게 되돌릴 수 없다. 예외를 소비해
+        # "Task exception was never retrieved"만 막는다. 수명주기는 worker finally가 닫는다.
+        try:
+            worker.result()
+        except (asyncio.CancelledError, Exception):
+            pass
+
+
+def _endpoint_url(value: str, *, allow_insecure_http: bool) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc or parsed.username or parsed.password:
+        raise KricInvalidParameterError("RustFS endpoint_url must be an http(s) URL without credentials")
+    if parsed.scheme == "http" and not allow_insecure_http:
+        raise KricStorageConfigurationError(
+            "RustFS endpoint_url must use HTTPS unless allow_insecure_http is explicitly enabled"
+        )
+    return value.rstrip("/")
+
+
+def _bucket_name(value: str) -> str:
+    bucket = value.strip()
+    if not _BUCKET_RE.fullmatch(bucket):
+        raise KricInvalidParameterError("RustFS bucket must be a valid S3 bucket name")
+    return bucket
+
+
+def _prefix(value: str) -> str:
+    if not isinstance(value, str):
+        raise KricInvalidParameterError("RustFS prefix must be a string")
+    return value.strip().strip("/")
+
+
+def _object_key(value: str) -> str:
+    if not isinstance(value, str):
+        raise KricInvalidParameterError("RustFS object_key must be a string")
+    key = value.strip().strip("/")
+    if not key or ".." in key.split("/"):
+        raise KricInvalidParameterError("RustFS object_key must be a non-empty relative path")
+    return key
+
+
+def _storage_error(exc: Exception) -> Exception:
+    """boto3 오류를 재시도 정책에 필요한 KRIC 오류로 보수적으로 분류한다."""
+    exceptions = importlib.import_module("botocore.exceptions")
+    if isinstance(exc, exceptions.ClientError):
+        error = exc.response.get("Error", {})
+        code = str(error.get("Code", ""))
+        status = int(exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0) or 0)
+        if code in {"AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch", "ExpiredToken"} or status in {401, 403}:
+            return KricAuthError("RustFS object upload was not authorized")
+        if code in {"NoSuchBucket", "InvalidBucketName", "InvalidRequest"} or status == 404:
+            return KricStorageConfigurationError("RustFS bucket or request configuration is invalid")
+        if code in {"SlowDown", "Throttling", "RequestLimitExceeded"} or status == 429:
+            return KricRateLimitError("RustFS object upload was rate limited")
+        if status >= 500:
+            return KricServerError("RustFS object store returned a server error")
+        return KricStorageConfigurationError("RustFS object upload was rejected")
+    if isinstance(exc, (exceptions.ConnectTimeoutError, exceptions.ReadTimeoutError, exceptions.EndpointConnectionError, exceptions.ConnectionClosedError)):
+        return KricNetworkError("RustFS object upload network request failed")
+    if isinstance(exc, exceptions.BotoCoreError):
+        return KricNetworkError("RustFS object upload transport failed")
+    return KricNetworkError("RustFS object upload failed")
