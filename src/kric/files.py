@@ -7,6 +7,7 @@ from io import BytesIO
 from math import isfinite
 import re
 from typing import Any
+from xml.etree.ElementTree import ParseError
 from zipfile import BadZipFile, ZipFile
 
 import httpx
@@ -178,7 +179,7 @@ def parse_xlsx_table(
             if sum(member.file_size for member in archive.infolist()) > max_uncompressed_bytes:
                 raise KricServerError("KRIC public-file workbook exceeds max_uncompressed_bytes")
         workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
-    except (BadZipFile, InvalidFileException, OSError, ValueError) as exc:
+    except (BadZipFile, InvalidFileException, OSError, ParseError, ValueError) as exc:
         raise KricServerError("KRIC public file is not a readable XLSX workbook") from exc
     try:
         if not workbook.worksheets:
@@ -215,6 +216,8 @@ def parse_xlsx_table(
             headers=normalized_headers,
             rows=tuple(records),
         )
+    except ParseError as exc:
+        raise KricServerError("KRIC public-file workbook contains invalid worksheet XML") from exc
     finally:
         workbook.close()
 

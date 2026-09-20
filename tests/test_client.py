@@ -1,4 +1,5 @@
 from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import httpx
 import pytest
@@ -283,6 +284,20 @@ def test_public_file_parser_rejects_invalid_or_oversized_input():
     for invalid_timeout in (None, True, "1", float("nan")):
         with pytest.raises(KricInvalidParameterError, match="timeout"):
             KricFileClient(timeout=invalid_timeout)  # type: ignore[arg-type]
+
+
+def test_public_file_parser_normalizes_late_worksheet_xml_errors():
+    source = _station_info_workbook_bytes()
+    output = BytesIO()
+    with ZipFile(BytesIO(source)) as source_archive, ZipFile(output, "w", ZIP_DEFLATED) as output_archive:
+        for item in source_archive.infolist():
+            data = source_archive.read(item.filename)
+            if item.filename == "xl/worksheets/sheet1.xml":
+                data = b"<worksheet>"
+            output_archive.writestr(item, data)
+
+    with pytest.raises(KricServerError, match="readable XLSX workbook"):
+        parse_xlsx_table(output.getvalue())
 
 
 @respx.mock
