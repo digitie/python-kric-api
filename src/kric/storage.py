@@ -64,6 +64,11 @@ class RustfsObjectStore:
         if max_concurrent_uploads <= 0:
             raise KricInvalidParameterError("RustFS max_concurrent_uploads must be positive")
         self._uploads = asyncio.Semaphore(max_concurrent_uploads)
+        self._state_lock = asyncio.Lock()
+        self._uploads_drained = asyncio.Event()
+        self._uploads_drained.set()
+        self._active_uploads = 0
+        self._closing = False
         self._closed = False
         self._close_lock = asyncio.Lock()
 
@@ -117,13 +122,12 @@ class RustfsObjectStore:
         content_type: str = "application/octet-stream",
     ) -> StoredObject:
         """바이트를 저장하고 SHA-256 기반 무결성 메타데이터를 반환한다."""
-        if self._closed:
-            raise KricStorageConfigurationError("RustFS object store is closed")
         key = _object_key(object_key)
         if not isinstance(body, bytes) or not body:
             raise KricInvalidParameterError("RustFS object body must be non-empty bytes")
         content_type = content_type.strip() or "application/octet-stream"
         checksum = hashlib.sha256(body).hexdigest()
+        await self._begin_upload()
         try:
             async with self._uploads:
                 response = await asyncio.to_thread(
@@ -136,6 +140,8 @@ class RustfsObjectStore:
                 )
         except Exception as exc:
             raise _storage_error(exc) from exc
+        finally:
+            await self._finish_upload()
         etag = response.get("ETag") if isinstance(response, dict) else None
         return StoredObject(
             bucket=self.bucket,
@@ -152,22 +158,39 @@ class RustfsObjectStore:
         return f"{self.prefix}/{suffix}" if self.prefix else suffix
 
     async def aclose(self) -> None:
-        """S3 HTTP 연결 풀을 한 번만 닫는다."""
+        """신규 upload를 닫고, 이미 승인된 upload 뒤 S3 HTTP 연결 풀을 한 번만 닫는다."""
         async with self._close_lock:
             if self._closed:
                 return
+            async with self._state_lock:
+                self._closing = True
+            await self._uploads_drained.wait()
             close = getattr(self.s3_client, "close", None)
             if callable(close):
                 await asyncio.to_thread(close)
             self._closed = True
 
     async def __aenter__(self) -> "RustfsObjectStore":
-        if self._closed:
-            raise KricStorageConfigurationError("RustFS object store is closed")
+        async with self._state_lock:
+            if self._closing or self._closed:
+                raise KricStorageConfigurationError("RustFS object store is closed")
         return self
 
     async def __aexit__(self, *_: object) -> None:
         await self.aclose()
+
+    async def _begin_upload(self) -> None:
+        async with self._state_lock:
+            if self._closing or self._closed:
+                raise KricStorageConfigurationError("RustFS object store is closed")
+            self._active_uploads += 1
+            self._uploads_drained.clear()
+
+    async def _finish_upload(self) -> None:
+        async with self._state_lock:
+            self._active_uploads -= 1
+            if self._active_uploads == 0:
+                self._uploads_drained.set()
 
 
 def _endpoint_url(value: str, *, allow_insecure_http: bool) -> str:

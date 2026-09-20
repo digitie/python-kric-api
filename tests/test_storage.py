@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import threading
 
 import pytest
 from botocore.exceptions import ClientError
@@ -103,3 +105,31 @@ async def test_rustfs_store_classifies_missing_bucket_as_configuration_error() -
     store = RustfsObjectStore(MissingBucketClient(), bucket="kor-travel-raw")
     with pytest.raises(KricStorageConfigurationError, match="bucket"):
         await store.put_bytes(object_key="file", body=b"x")
+
+
+@pytest.mark.asyncio
+async def test_rustfs_store_waits_for_admitted_upload_before_closing() -> None:
+    class BlockingClient(FakeS3Client):
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = threading.Event()
+            self.release = threading.Event()
+
+        def put_object(self, **kwargs):
+            self.started.set()
+            assert self.release.wait(timeout=2)
+            return super().put_object(**kwargs)
+
+    client = BlockingClient()
+    store = RustfsObjectStore(client, bucket="kor-travel-raw")
+    upload = asyncio.create_task(store.put_bytes(object_key="file", body=b"x"))
+    assert await asyncio.to_thread(client.started.wait, 2)
+
+    closing = asyncio.create_task(store.aclose())
+    await asyncio.sleep(0)
+    assert client.close_calls == 0
+
+    client.release.set()
+    await upload
+    await closing
+    assert client.close_calls == 1
