@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python-kric-api"
+version = "0.1.0"
+description = "Python client for Korea Railway Industry Information Center Open API"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+dependencies = ["httpx>=0.27"]
+
+[project.optional-dependencies]
+dev = ["mypy>=1.10", "pytest>=8", "pytest-asyncio>=0.23", "pytest-cov", "respx>=0.21"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["kric*"]
+
+[tool.setuptools.package-data]
+kric = ["py.typed"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"
+markers = ["live: 사용자 서비스키를 사용해 실제 KRIC에 호출하는 테스트"]

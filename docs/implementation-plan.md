@@ -7,8 +7,9 @@
 스케줄러·PostgreSQL·FastAPI를 구현하지 않으며, 소비자 `kor-travel-transport`가 주기 저장과
 즉시 조회를 맡는다.
 
-현재는 서비스키가 발급되지 않았고, 라이브러리 구현은 시작하지 않았다. 아래 API 신청과
-fixture 확보가 선행 조건이다.
+서비스키는 아직 발급되지 않았다. JSON client와 네트워크 없는 parser/test scaffold는
+구현됐으며, 실제 성공 응답 envelope와 역 편의시설 세부 필드는 아래 API 신청 뒤 키를
+제거한 fixture로 확정해야 한다.
 
 ## 1단계: 안정 파서 대상
 
@@ -36,8 +37,9 @@ KRIC의 신청 절차는 [Open API 이용 절차](https://data.kric.go.kr/rips/s
 
 ## 3단계: 패키지와 테스트
 
-1. `src/kric`에 client, exceptions, models, parse, files를 만든다.
-2. 서비스키가 제거된 fixture로 JSON/XML의 목록·단일 객체·빈 값·오류 payload를 테스트한다.
+1. `src/kric`의 client, exceptions, models, parse를 구현했고 공개 파일 parser는 실제 파일
+   형식·라이선스·갱신 주기가 선택된 뒤 별도 모듈로 추가한다.
+2. 서비스키가 제거된 실제 성공 fixture로 JSON/XML의 목록·단일 객체·빈 값·오류 payload를 테스트한다.
 3. 코드 선행 0, 노선 반복역, 순서, `dayCd`, 시간 문자열, CRS 미확정 좌표를 회귀 테스트한다.
 4. 공식 샘플 또는 허가된 1회 live 호출을 fixture로 정리한 뒤 `@pytest.mark.live` smoke를 추가한다.
 5. README·구현 상태·변경 기록을 갱신하고 두 적대적 리뷰와 CI를 통과한다.
