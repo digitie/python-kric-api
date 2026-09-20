@@ -158,6 +158,96 @@ class KricFileDownload:
 
 
 @dataclass(frozen=True, slots=True)
+class DomesticFerryPort:
+    """TAGO 국내선박운항정보의 출항·도착 항구 식별자."""
+
+    port_id: str | None
+    port_name: str | None
+    raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "raw", _freeze_raw(self.raw))
+
+
+@dataclass(frozen=True, slots=True)
+class FerryTerminal:
+    """TAGO 여객선 터미널 기준정보."""
+
+    terminal_id: str | None
+    terminal_name: str | None
+    address: str | None
+    telephone: str | None
+    raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "raw", _freeze_raw(self.raw))
+
+
+@dataclass(frozen=True, slots=True)
+class FerryShipType:
+    """TAGO 여객선 종류 기준정보."""
+
+    ship_type_id: str | None
+    ship_type_name: str | None
+    raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "raw", _freeze_raw(self.raw))
+
+
+@dataclass(frozen=True, slots=True)
+class DomesticShipOperation:
+    """출항 항구·계획일 기준의 국내 여객선 운항 계획. 시각과 요금은 원문 문자열이다."""
+
+    vessel_name: str | None
+    departure_port_name: str | None
+    arrival_port_name: str | None
+    departure_planned_time: str | None
+    arrival_planned_time: str | None
+    fare: str | None
+    raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "raw", _freeze_raw(self.raw))
+
+
+@dataclass(frozen=True, slots=True)
+class CoastalFerrySchedule:
+    """KOMSA 연안여객선 운항 스케줄. 날짜·시각·코드는 제공 원문을 보존한다."""
+
+    schedule_date: str | None
+    departure_time: str | None
+    vessel_code: str | None
+    vessel_name: str | None
+    departure_port_code: str | None
+    departure_port_name: str | None
+    destination_port_code: str | None
+    destination_port_name: str | None
+    licensed_route_code: str | None
+    licensed_route_name: str | None
+    operating_route_code: str | None
+    operating_route_name: str | None
+    direction_code: str | None
+    direction_name: str | None
+    operation_type_code: str | None
+    operation_type_name: str | None
+    operation_status_code: str | None
+    operation_status_name: str | None
+    control_reason_code: str | None
+    control_reason_name: str | None
+    non_operation_reason_code: str | None
+    non_operation_reason_name: str | None
+    vessel_number: str | None
+    cancellation_other_reason: str | None
+    route_category_code: str | None
+    route_category_name: str | None
+    raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "raw", _freeze_raw(self.raw))
+
+
+@dataclass(frozen=True, slots=True)
 class KricFileTable:
     """공개 XLSX 첫 worksheet의 헤더와 원문 행."""
 

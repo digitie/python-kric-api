@@ -7,6 +7,8 @@ import respx
 from openpyxl import Workbook
 
 from kric import (
+    CoastalFerrySchedule,
+    DataGoKrMaritimeClient,
     KricAuthError,
     KricClient,
     KricFileClient,
@@ -326,3 +328,141 @@ async def test_public_file_download_never_follows_injected_client_redirects():
         await injected_client.aclose()
 
     assert requested_hosts == ["data.kric.go.kr"]
+
+
+@respx.mock
+async def test_domestic_ship_client_uses_data_go_key_and_preserves_provider_typo_field():
+    ports = respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetPortList").mock(
+        return_value=httpx.Response(200, json={"response": {"header": {"resultCode": "00"}, "body": {"items": {"item": [{
+            "nodeId": "P0001", "nodeNm": "인천항"
+        }]}, "totalCount": 1}}})
+    )
+    operations = respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetShipOpratInfoList").mock(
+        return_value=httpx.Response(200, json={"response": {"header": {"resultCode": "00"}, "body": {"items": {"item": {
+            "vihicleNm": "가상카페리", "depPlaceNm": "인천항", "arrPlaceNm": "백령도",
+            "depPlandTime": "202609210800", "arrPlandTime": "202609211230", "charge": "70000",
+        }}}}})
+    )
+    async with DataGoKrMaritimeClient("data-go-test-key") as client:
+        port_rows = await client.search_ports(name="인천", page_no=2, num_of_rows=25)
+        operation_rows = await client.get_domestic_ship_operations(
+            departure_port_id="P0001", departure_date="20260921"
+        )
+
+    assert ports.called and operations.called
+    assert ports.calls[0].request.url.params["serviceKey"] == "data-go-test-key"
+    assert ports.calls[0].request.url.params["_type"] == "JSON"
+    assert ports.calls[0].request.url.params["nodeNm"] == "인천"
+    assert ports.calls[0].request.url.params["pageNo"] == "2"
+    assert port_rows[0].port_id == "P0001"
+    assert operation_rows[0].vessel_name == "가상카페리"
+    assert operation_rows[0].departure_planned_time == "202609210800"
+
+
+@respx.mock
+async def test_domestic_ship_reference_lists_are_typed():
+    terminal = respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetPsnshipTrminlList").mock(
+        return_value=httpx.Response(200, json={"response": {"header": {"resultCode": "00"}, "body": {"items": {"item": {
+            "terminalId": "T01", "terminalNm": "인천연안여객터미널", "address": "인천", "tel": "032-000-0000"
+        }}}}})
+    )
+    ship_type = respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetShipKndList").mock(
+        return_value=httpx.Response(200, json={"response": {"header": {"resultCode": "00"}, "body": {"items": {"item": {
+            "shipKndId": "K01", "shipKndNm": "차도선"
+        }}}}})
+    )
+    async with DataGoKrMaritimeClient("data-go-test-key") as client:
+        terminals = await client.get_ferry_terminals()
+        ship_types = await client.get_ferry_ship_types()
+
+    assert terminal.called and ship_type.called
+    assert terminals[0].terminal_name == "인천연안여객터미널"
+    assert terminals[0].telephone == "032-000-0000"
+    assert ship_types[0].ship_type_id == "K01"
+    assert ship_types[0].ship_type_name == "차도선"
+
+
+@respx.mock
+async def test_coastal_schedule_uses_documented_required_query_and_preserves_codes():
+    route = respx.get("https://apis.data.go.kr/B554035/oprt-schd-info-v2/get-oprt-schd-info-v2").mock(
+        return_value=httpx.Response(200, json={"header": {"resultCode": "00"}, "body": {"items": {"item": {
+            "rlvt_ymd": "20260921", "sail_tm": "0810", "psnshp_cd": "0007", "psnshp_nm": "가상호",
+            "oport_cd": "OP01", "oport_nm": "출항항", "dest_cd": "DS01", "dest_nm": "도착항",
+            "nvg_stts_cd": "N", "nvg_stts_nm": "정상", "unknown_field": "원문 보존",
+        }}}})
+    )
+    async with DataGoKrMaritimeClient("data-go-test-key") as client:
+        rows = await client.get_coastal_ferry_schedules(
+            schedule_date="20260921", vessel_name="가상호"
+        )
+
+    assert route.called
+    params = route.calls[0].request.url.params
+    assert params["dataType"] == "JSON"
+    assert params["rlvtYmd"] == "20260921"
+    assert params["psnshpNm"] == "가상호"
+    assert "filters" not in params
+    assert isinstance(rows[0], CoastalFerrySchedule)
+    assert rows[0].vessel_code == "0007"
+    assert rows[0].operation_status_name == "정상"
+    assert rows[0].raw["unknown_field"] == "원문 보존"
+
+
+@respx.mock
+async def test_maritime_client_maps_data_go_errors_and_rejects_invalid_arguments_before_network():
+    route = respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetPortList").mock(
+        return_value=httpx.Response(200, json={"response": {"header": {"resultCode": "30", "resultMsg": "등록되지 않은 서비스키"}}})
+    )
+    async with DataGoKrMaritimeClient("data-go-test-key") as client:
+        with pytest.raises(KricAuthError):
+            await client.search_ports()
+        route.mock(return_value=httpx.Response(200, json={"response": {"header": {"resultCode": "22", "resultMsg": "일일 호출량 초과"}}}))
+        with pytest.raises(KricRateLimitError):
+            await client.search_ports()
+        with pytest.raises(KricInvalidParameterError):
+            await client.get_domestic_ship_operations(departure_port_id="P1", departure_date="20260230")
+        with pytest.raises(KricInvalidParameterError):
+            await client.get_coastal_ferry_schedules(schedule_date="20260921", vessel_name=" ")
+        with pytest.raises(KricInvalidParameterError):
+            await client.search_ports(page_no=True)
+    with pytest.raises(KricInvalidParameterError):
+        DataGoKrMaritimeClient(" ")
+
+
+@respx.mock
+async def test_coastal_schedule_not_found_data_is_an_empty_result_not_a_schema_error():
+    respx.get("https://apis.data.go.kr/B554035/oprt-schd-info-v2/get-oprt-schd-info-v2").mock(
+        return_value=httpx.Response(200, json={"header": {"resultCode": "153", "resultMsg": "NOT_FOUND_DATA"}})
+    )
+    async with DataGoKrMaritimeClient("data-go-test-key") as client:
+        rows = await client.get_coastal_ferry_schedules(schedule_date="20260920", vessel_name="가상호")
+
+    assert rows == ()
+
+
+@respx.mock
+async def test_empty_result_without_a_pagination_count_is_a_schema_error():
+    respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetShipKndList").mock(
+        return_value=httpx.Response(200, json={"response": {"header": {"resultCode": "00"}, "body": {"items": ""}}})
+    )
+    async with DataGoKrMaritimeClient("data-go-test-key") as client:
+        with pytest.raises(KricServerError, match="totalCount"):
+            await client.get_ferry_ship_types()
+
+
+async def test_maritime_client_rejects_redirects_even_when_the_injected_client_follows_them():
+    requested_hosts: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested_hosts.append(request.url.host)
+        return httpx.Response(302, headers={"location": "https://redirected.invalid/metadata"})
+
+    injected_client = httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=True)
+    try:
+        async with DataGoKrMaritimeClient("data-go-test-key", client=injected_client) as client:
+            with pytest.raises(KricServerError, match="redirect denied"):
+                await client.search_ports()
+    finally:
+        await injected_client.aclose()
+
+    assert requested_hosts == ["apis.data.go.kr"]
