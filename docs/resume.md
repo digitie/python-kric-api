@@ -6,10 +6,13 @@
 - 공공데이터포털의 국내선박운항정보와 KOMSA 연안여객선 운항 스케줄 provider를
   `DataGoKrMaritimeClient`로 분리 구현했다. `DATA_GO_KR_SERVICE_KEY`로 서비스별 최소
   live 호출과 KOMSA 빈 결과(`153`) 계약을 검증했다.
+- 공개 XLSX 원문을 공용 RustFS에 비동기 보관할 수 있다. `RustfsObjectStore`는 S3 호환
+  boto3 client를 `asyncio.to_thread`로 감싸고, file client는 dataset·operation·SHA-256
+  기반의 idempotent object key를 반환한다.
 - 서비스키 신청 전 단계이며 실제 성공 envelope와 역 편의시설 Open API 세부 필드는 키가 제거된
   fixture로 확인되지 않았다.
 
 # 다음 한 작업
 
-dataset `916` 이후 전국 역사 편의시설 파일의 실제 헤더·갱신 계약을 확인하고, 우선순위 시설
-파일의 typed parser를 추가한다. 서비스키가 발급되면 KRIC P0 API live smoke도 병행한다.
+RustFS 공개 파일 저장 변경의 CI·독립 리뷰·머지 뒤 소비 서비스의 공용 RustFS 설정을 연결하고,
+dataset `916` 이후 전국 역사 편의시설 파일의 실제 헤더·갱신 계약을 확인한다.

@@ -8,6 +8,7 @@ from .files import (
     parse_nationwide_station_info_xlsx,
 )
 from .maritime import DataGoKrMaritimeClient
+from .storage import RustfsObjectStore, StoredObject
 from .exceptions import (
     KricAuthError,
     KricError,
@@ -38,6 +39,8 @@ __all__ = [
     "KricClient",
     "DataGoKrMaritimeClient",
     "KricFileClient",
+    "RustfsObjectStore",
+    "StoredObject",
     "KricError",
     "KricInvalidParameterError",
     "KricNetworkError",

@@ -118,6 +118,27 @@ async with KricFileClient() as client:
 다운로드 주소는 SSRF 방지를 위해 `https://data.kric.go.kr`으로만 제한합니다.
 주입한 HTTP client가 redirect를 따르도록 설정돼도 공개 파일 요청은 redirect를 따르지 않습니다.
 
+공용 RustFS에 파일 원문을 함께 보관하려면 S3 호환 `RustfsObjectStore`를 명시적으로 만들고
+`download_dataset_to_rustfs()` 또는 `get_nationwide_station_info_to_rustfs()`를 사용합니다.
+모든 저장 API는 `async`이며, 내부 boto3 호출은 worker thread로 넘겨 event loop를 막지 않습니다.
+
+```python
+from kric import KricFileClient, RustfsObjectStore
+
+store = RustfsObjectStore.from_s3_compatible_settings(
+    endpoint_url="http://rustfs:9000",
+    bucket="kor-travel-transport-raw",
+    access_key_id="...",
+    secret_access_key="...",
+)
+async with KricFileClient() as client:
+    stations, stored = await client.get_nationwide_station_info_to_rustfs(store)
+    print(stored.object_key, len(stations))
+```
+
+객체 key는 `provider-raw/kric/dataset-<id>/operation-<id>/<sha256>.xlsx`로 결정한다.
+동일 원문은 같은 key로 덮어써 재수집이 idempotent하며, DB·스케줄링 책임은 계속 소비 서비스에 있다.
+
 실제 공개 파일 계약은 서비스키 없이 다음처럼 선택적으로 확인할 수 있습니다.
 
 ```bash

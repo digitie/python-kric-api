@@ -1,5 +1,14 @@
 # 작업 기록
 
+## 2026-09-21
+
+- 공용 RustFS를 S3 호환 object store로 사용하는 `RustfsObjectStore`를 추가했다. 공개 API는
+  모두 async이며 boto3 `put_object`만 `asyncio.to_thread`에서 실행한다.
+- `KricFileClient.download_dataset_to_rustfs()`와
+  `get_nationwide_station_info_to_rustfs()`가 공개 XLSX의 원문을
+  `dataset/operation/SHA-256` 결정적 key로 보관한다. endpoint URL의 credential 포함,
+  unsafe object key, 빈 object body는 요청 전에 거부한다.
+
 ## 2026-09-20
 
 - 공공데이터포털의 국토교통부 `(TAGO) 국내선박운항정보`와 한국해양교통안전공단 `운항 스케줄 정보`의 공식 요청·응답 계약을 확인했다.
