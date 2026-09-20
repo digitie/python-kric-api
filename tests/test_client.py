@@ -1,16 +1,23 @@
+from io import BytesIO
+
 import httpx
 import pytest
 import respx
+from openpyxl import Workbook
 
 from kric import (
     KricAuthError,
     KricClient,
+    KricFileClient,
     KricInvalidParameterError,
     KricNetworkError,
     KricRateLimitError,
     KricServerError,
     ServiceDayCode,
+    parse_nationwide_station_info_xlsx,
+    parse_xlsx_table,
 )
+from kric.files import FILE_DOWNLOAD_URL
 from kric.parse import (
     extract_items,
     float_or_none,
@@ -189,3 +196,65 @@ async def test_client_rejects_blank_or_unsafe_requests_before_network():
             )
     with pytest.raises(KricInvalidParameterError):
         KricClient("test-key", timeout=0)
+
+
+def _station_info_workbook_bytes() -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append([
+        "철도운영기관명", "운영노선", "역 종류", "역 번호", "역명(한글)", "역명(영어)",
+        "역 위치(경도)", "역 위치(위도)", "역 주소(도로명 주소)", "데이터 기준일자", "추가 열",
+    ])
+    sheet.append([
+        "서울교통공사", "1호선", "일반역", "0150", "서울역", "Seoul", 126.970606, 37.554648,
+        "서울특별시 용산구", "2026-07-01", "원문 보존",
+    ])
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+def test_public_station_file_parser_keeps_file_identity_and_unknown_columns():
+    rows = parse_nationwide_station_info_xlsx(_station_info_workbook_bytes())
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.rail_operator_name == "서울교통공사"
+    assert row.operating_line_name == "1호선"
+    assert row.station_number == "0150"
+    assert row.station_name == "서울역"
+    assert (row.longitude, row.latitude) == (126.970606, 37.554648)
+    assert row.raw["추가 열"] == "원문 보존"
+
+    table = parse_xlsx_table(_station_info_workbook_bytes())
+    assert table.headers[-1] == "추가 열"
+    assert table.rows[0]["추가 열"] == "원문 보존"
+
+
+@respx.mock
+async def test_public_file_download_requires_no_service_key_and_parses_station_dataset():
+    route = respx.get(FILE_DOWNLOAD_URL).mock(
+        return_value=httpx.Response(
+            200,
+            content=_station_info_workbook_bytes(),
+            headers={"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+        )
+    )
+    async with KricFileClient() as client:
+        rows = await client.get_nationwide_station_info()
+
+    assert route.called
+    params = route.calls[0].request.url.params
+    assert dict(params) == {"type": "filedata", "id": "1294", "operation": "1"}
+    assert "serviceKey" not in params
+    assert rows[0].station_name == "서울역"
+
+
+def test_public_station_file_parser_rejects_missing_contract_headers():
+    workbook = Workbook()
+    workbook.active.append(["운영노선", "역 번호", "역명(한글)"])
+    output = BytesIO()
+    workbook.save(output)
+
+    with pytest.raises(KricServerError, match="required headers"):
+        parse_nationwide_station_info_xlsx(output.getvalue())

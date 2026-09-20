@@ -113,3 +113,57 @@ class StationFacility:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "values", _freeze_raw(self.values))
+
+
+@dataclass(frozen=True, slots=True)
+class FileStationInfo:
+    """공개 XLSX 역사정보 한 건.
+
+    파일의 운영기관명·운영노선·역 번호는 Open API의 코드 필드와 별개다. 제공자가
+    코드라고 명시하지 않은 표시값을 API 식별자로 추정하지 않는다.
+    """
+
+    rail_operator_name: str | None
+    operating_line_name: str | None
+    station_type: str | None
+    station_number: str | None
+    station_name: str | None
+    english_name: str | None
+    romanized_name: str | None
+    japanese_name: str | None
+    simplified_chinese_name: str | None
+    traditional_chinese_name: str | None
+    sub_station_name: str | None
+    longitude: float | None
+    latitude: float | None
+    lot_address: str | None
+    road_address: str | None
+    station_phone_number: str | None
+    data_reference_date: str | None
+    raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "raw", _freeze_raw(self.raw))
+
+
+@dataclass(frozen=True, slots=True)
+class KricFileDownload:
+    """인증키 없이 내려받은 KRIC 공개 파일과 출처 식별자."""
+
+    dataset_id: int
+    operation: int
+    source_url: str
+    content_type: str | None
+    content: bytes = field(repr=False)
+
+
+@dataclass(frozen=True, slots=True)
+class KricFileTable:
+    """공개 XLSX 첫 worksheet의 헤더와 원문 행."""
+
+    worksheet_title: str
+    headers: tuple[str, ...]
+    rows: tuple[Mapping[str, str | None], ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "rows", tuple(_freeze_raw(row) for row in self.rows))

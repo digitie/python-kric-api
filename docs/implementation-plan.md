@@ -11,6 +11,20 @@
 구현됐으며, 실제 성공 응답 envelope와 역 편의시설 세부 필드는 아래 API 신청 뒤 키를
 제거한 fixture로 확정해야 한다.
 
+## 공개 파일 우선 기준정보
+
+서비스키가 필요 없고 갱신 주기가 낮은 데이터는 Open API보다 파일 데이터를 우선한다.
+포털의 파일과 Open API를 같은 원본이나 같은 코드 체계로 가정하지 않는다.
+
+| 우선순위 | 파일 dataset | 현재 확인한 계약 | 라이브러리 제공 방식 | 소비 서비스 수집 권장 |
+|---|---:|---|---|---|
+| P0 | `1294` | 전국 도시광역철도 역사정보, XLSX, 29개 열, 수정일 2026-06-29, 포털상 업데이트 주기 없음 | `KricFileClient.get_nationwide_station_info()` → `FileStationInfo` | 월 1회와 포털 수정 감지 시 |
+| P1 | `916` 이후 전국 역사 편의시설 XLSX | ATM·고객센터·무빙워크·보관함 등 시설별 분리 파일 | 공통 XLSX 다운로드 후 각 파일 계약 확인 뒤 typed parser 추가 | 월 1회와 포털 수정 감지 시 |
+
+`1294`의 운영기관명·운영노선·역 번호는 화면용 값이며, API의
+`railOprIsttCd`/`lnCd`/`stinCd`로 변환하거나 조인하지 않는다. 좌표는 파일에 명시된
+경도·위도 열만 `float`으로 해석하고, API의 `mapCordX`/`mapCordY`와 결합하지 않는다.
+
 ## 1단계: 안정 파서 대상
 
 | 우선순위 | KRIC service / operation | 제공 모델 | 주의점 |
@@ -37,8 +51,9 @@ KRIC의 신청 절차는 [Open API 이용 절차](https://data.kric.go.kr/rips/s
 
 ## 3단계: 패키지와 테스트
 
-1. `src/kric`의 client, exceptions, models, parse를 구현했고 공개 파일 parser는 실제 파일
-   형식·라이선스·갱신 주기가 선택된 뒤 별도 모듈로 추가한다.
+1. `src/kric`의 client, exceptions, models, parse와 `files`를 구현했다. `files`는 공개 XLSX의
+   무인증 다운로드와 dataset `1294` 역사정보 typed parser를 제공한다. 시설별 파일은 실제
+   헤더·갱신 계약을 확인한 뒤 각 typed parser를 추가한다.
 2. 서비스키가 제거된 실제 성공 fixture로 JSON/XML의 목록·단일 객체·빈 값·오류 payload를 테스트한다.
 3. 코드 선행 0, 노선 반복역, 순서, `dayCd`, 시간 문자열, CRS 미확정 좌표를 회귀 테스트한다.
 4. 공식 샘플 또는 허가된 1회 live 호출을 fixture로 정리한 뒤 `@pytest.mark.live` smoke를 추가한다.
