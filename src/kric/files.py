@@ -93,9 +93,14 @@ class KricFileClient:
                 "GET",
                 self.download_url,
                 params={"type": "filedata", "id": str(dataset_id), "operation": str(operation)},
+                follow_redirects=False,
             ) as response:
                 if response.status_code == 429:
                     raise KricRateLimitError("KRIC public-file request rate limited: HTTP 429")
+                if 300 <= response.status_code < 400:
+                    raise KricServerError(
+                        f"KRIC public-file redirect denied: HTTP {response.status_code}"
+                    )
                 if response.status_code >= 400:
                     raise KricServerError(f"KRIC public-file request failed: HTTP {response.status_code}")
                 _check_content_length(response.headers.get("content-length"), self.max_download_bytes)

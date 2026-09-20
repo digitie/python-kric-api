@@ -308,3 +308,21 @@ async def test_public_file_download_rejects_declared_oversize_before_reading_bod
     async with KricFileClient(max_download_bytes=10) as client:
         with pytest.raises(KricServerError, match="max_download_bytes"):
             await client.download_dataset(dataset_id=1294)
+
+
+async def test_public_file_download_never_follows_injected_client_redirects():
+    requested_hosts: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requested_hosts.append(request.url.host)
+        return httpx.Response(302, headers={"location": "https://redirected.invalid/internal"})
+
+    injected_client = httpx.AsyncClient(transport=httpx.MockTransport(handler), follow_redirects=True)
+    try:
+        async with KricFileClient(client=injected_client) as client:
+            with pytest.raises(KricServerError, match="redirect denied"):
+                await client.download_dataset(dataset_id=1294)
+    finally:
+        await injected_client.aclose()
+
+    assert requested_hosts == ["data.kric.go.kr"]

@@ -15,3 +15,5 @@
   다운로드, 압축 해제·행·열 상한, 입력 예외 정규화를 추가해 주기 수집 경계를 강화했다.
 - 공개 파일 URL을 KRIC `data.kric.go.kr` HTTPS 호스트로 제한하고, 잘못된 URL·timeout을
   provider 예외로 정규화했다.
+- 주입된 HTTP client의 redirect 설정으로 호스트 제한이 우회되지 않도록, 파일 다운로드의
+  redirect를 명시적으로 거부했다.

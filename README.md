@@ -76,6 +76,7 @@ async with KricFileClient() as client:
 제한합니다. 숫자 셀의 `0000` 형식과 `\\I000` 같은 이스케이프 접두사 형식은 표시 문자열로
 보존하므로 역 번호의 선행 0·문자 접두사가 사라지지 않습니다.
 다운로드 주소는 SSRF 방지를 위해 `https://data.kric.go.kr`으로만 제한합니다.
+주입한 HTTP client가 redirect를 따르도록 설정돼도 공개 파일 요청은 redirect를 따르지 않습니다.
 
 실제 공개 파일 계약은 서비스키 없이 다음처럼 선택적으로 확인할 수 있습니다.
 
