@@ -128,19 +128,25 @@ class RustfsObjectStore:
         content_type = content_type.strip() or "application/octet-stream"
         checksum = hashlib.sha256(body).hexdigest()
         await self._begin_upload()
+        worker = asyncio.create_task(
+            self._upload_with_limit(
+                object_key=key,
+                body=body,
+                content_type=content_type,
+                checksum=checksum,
+            )
+        )
         try:
-            async with self._uploads:
-                response = await asyncio.to_thread(
-                    self.s3_client.put_object,
-                    Bucket=self.bucket,
-                    Key=key,
-                    Body=body,
-                    ContentType=content_type,
-                    Metadata={"sha256": checksum},
-                )
+            response = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            # 호출자 취소가 thread의 boto3 요청을 취소하지는 않는다. worker가 semaphore와
+            # active-upload 수명주기를 끝까지 소유하게 해 close가 HTTP pool을 먼저 닫지 않는다.
+            worker.add_done_callback(self._finish_cancelled_upload)
+            raise
         except Exception as exc:
+            await self._finish_upload()
             raise _storage_error(exc) from exc
-        finally:
+        else:
             await self._finish_upload()
         etag = response.get("ETag") if isinstance(response, dict) else None
         return StoredObject(
@@ -191,6 +197,33 @@ class RustfsObjectStore:
             self._active_uploads -= 1
             if self._active_uploads == 0:
                 self._uploads_drained.set()
+
+    async def _upload_with_limit(
+        self,
+        *,
+        object_key: str,
+        body: bytes,
+        content_type: str,
+        checksum: str,
+    ) -> dict[str, Any]:
+        async with self._uploads:
+            return await asyncio.to_thread(
+                self.s3_client.put_object,
+                Bucket=self.bucket,
+                Key=object_key,
+                Body=body,
+                ContentType=content_type,
+                Metadata={"sha256": checksum},
+            )
+
+    def _finish_cancelled_upload(self, worker: asyncio.Task[dict[str, Any]]) -> None:
+        # background worker의 실패는 취소를 선택한 호출자에게 되돌릴 수 없다. 예외를 소비해
+        # "Task exception was never retrieved"를 막고, 끝난 뒤에만 active count를 내린다.
+        try:
+            worker.result()
+        except (asyncio.CancelledError, Exception):
+            pass
+        asyncio.create_task(self._finish_upload())
 
 
 def _endpoint_url(value: str, *, allow_insecure_http: bool) -> str:
