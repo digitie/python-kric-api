@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from math import isfinite
 from typing import Any, TypeVar
 
 from .exceptions import KricServerError
@@ -32,9 +33,12 @@ def float_or_none(value: Any, field_name: str) -> float | None:
     if text is None:
         return None
     try:
-        return float(text)
+        parsed = float(text)
     except ValueError as exc:
         raise KricServerError(f"invalid KRIC numeric field {field_name}: {text!r}") from exc
+    if not isfinite(parsed):
+        raise KricServerError(f"invalid KRIC numeric field {field_name}: {text!r}")
+    return parsed
 
 
 def integer_or_none(value: Any, field_name: str) -> int | None:
@@ -51,6 +55,13 @@ def integer_or_none(value: Any, field_name: str) -> int | None:
 def as_raw_mapping(value: Mapping[str, Any]) -> dict[str, str | None]:
     """원시 객체의 값들을 직렬화 가능한 문자열 또는 None으로 보존한다."""
     return {str(key): string_or_none(item) for key, item in value.items()}
+
+
+def require_fields(raw: Mapping[str, str | None], record_name: str, *fields: str) -> None:
+    """공식 출력 계약의 식별 필드가 없으면 저장 가능한 모델을 만들지 않는다."""
+    missing = [field for field in fields if raw.get(field) is None]
+    if missing:
+        raise KricServerError(f"KRIC {record_name} is missing required fields: {', '.join(missing)}")
 
 
 def extract_items(payload: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
@@ -84,6 +95,7 @@ def service_day_code(value: Any) -> ServiceDayCode | str | None:
 
 def parse_station_info(row: Mapping[str, Any]) -> StationInfo:
     raw = as_raw_mapping(row)
+    require_fields(raw, "stationInfo item", "stinCd", "stinNm")
     return StationInfo(
         rail_operator_code=raw.get("railOprIsttCd"), line_code=raw.get("lnCd"),
         station_code=raw.get("stinCd"), station_name=raw.get("stinNm"),
@@ -100,6 +112,7 @@ def parse_station_info(row: Mapping[str, Any]) -> StationInfo:
 
 def parse_subway_route_stop(row: Mapping[str, Any]) -> SubwayRouteStop:
     raw = as_raw_mapping(row)
+    require_fields(raw, "subwayRouteInfo item", "routCd", "stinCd", "stinConsOrdr")
     return SubwayRouteStop(
         metro_area_code=raw.get("mreaWideCd"), rail_operator_code=raw.get("railOprIsttCd"),
         line_code=raw.get("lnCd"), route_code=raw.get("routCd"), route_name=raw.get("routNm"),
@@ -110,6 +123,7 @@ def parse_subway_route_stop(row: Mapping[str, Any]) -> SubwayRouteStop:
 
 def parse_station_timetable_entry(row: Mapping[str, Any]) -> StationTimetableEntry:
     raw = as_raw_mapping(row)
+    require_fields(raw, "stationTimetable item", "railOprIsttCd", "lnCd", "stinCd", "dayCd", "trnNo")
     return StationTimetableEntry(
         rail_operator_code=raw.get("railOprIsttCd"), line_code=raw.get("lnCd"),
         station_code=raw.get("stinCd"), day_code=service_day_code(raw.get("dayCd")),
@@ -121,6 +135,7 @@ def parse_station_timetable_entry(row: Mapping[str, Any]) -> StationTimetableEnt
 
 def parse_subway_timetable_entry(row: Mapping[str, Any]) -> SubwayTimetableEntry:
     raw = as_raw_mapping(row)
+    require_fields(raw, "subwayTimetable item", "railOprIsttCd", "lnCd", "stinCd", "dayCd", "trnNo")
     return SubwayTimetableEntry(
         rail_operator_code=raw.get("railOprIsttCd"), line_code=raw.get("lnCd"),
         station_code=raw.get("stinCd"), day_code=service_day_code(raw.get("dayCd")),
@@ -131,6 +146,7 @@ def parse_subway_timetable_entry(row: Mapping[str, Any]) -> SubwayTimetableEntry
 
 def parse_station_facility(row: Mapping[str, Any]) -> StationFacility:
     raw = as_raw_mapping(row)
+    require_fields(raw, "stationCnvFacl item", "stinCd")
     return StationFacility(
         rail_operator_code=raw.get("railOprIsttCd"), line_code=raw.get("lnCd"),
         station_code=raw.get("stinCd"), values=raw,
