@@ -209,6 +209,8 @@ def _station_info_workbook_bytes() -> bytes:
         "서울교통공사", "1호선", "일반역", "0150", "서울역", "Seoul", 126.970606, 37.554648,
         "서울특별시 용산구", "2026-07-01", "원문 보존",
     ])
+    sheet.cell(2, 4).value = 150
+    sheet.cell(2, 4).number_format = "0000"
     output = BytesIO()
     workbook.save(output)
     return output.getvalue()
@@ -258,3 +260,24 @@ def test_public_station_file_parser_rejects_missing_contract_headers():
 
     with pytest.raises(KricServerError, match="required headers"):
         parse_nationwide_station_info_xlsx(output.getvalue())
+
+
+def test_public_file_parser_rejects_invalid_or_oversized_input():
+    content = _station_info_workbook_bytes()
+
+    with pytest.raises(KricInvalidParameterError, match="content must be bytes"):
+        parse_xlsx_table("not-bytes")  # type: ignore[arg-type]
+    with pytest.raises(KricServerError, match="max_compressed_bytes"):
+        parse_xlsx_table(content, max_compressed_bytes=1)
+    with pytest.raises(KricInvalidParameterError, match="HTTPS URL"):
+        KricFileClient(download_url=None)  # type: ignore[arg-type]
+
+
+@respx.mock
+async def test_public_file_download_rejects_declared_oversize_before_reading_body():
+    respx.get(FILE_DOWNLOAD_URL).mock(
+        return_value=httpx.Response(200, content=b"small", headers={"content-length": "100"})
+    )
+    async with KricFileClient(max_download_bytes=10) as client:
+        with pytest.raises(KricServerError, match="max_download_bytes"):
+            await client.download_dataset(dataset_id=1294)
