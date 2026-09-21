@@ -436,6 +436,81 @@ async def test_domestic_ship_reference_lists_are_typed():
 
 
 @respx.mock
+async def test_maritime_reference_iterator_fetches_all_bounded_pages_and_fails_closed_at_budget():
+    def paged_ports(request: httpx.Request) -> httpx.Response:
+        page_no = request.url.params["pageNo"]
+        assert request.url.params["numOfRows"] == "2"
+        items = (
+            [{"nodeId": "P01", "nodeNm": "항구1"}, {"nodeId": "P02", "nodeNm": "항구2"}]
+            if page_no == "1"
+            else [{"nodeId": "P03", "nodeNm": "항구3"}]
+        )
+        return httpx.Response(
+            200,
+            json={"response": {"header": {"resultCode": "00"}, "body": {"items": {"item": items}, "totalCount": 3}}},
+        )
+
+    route = respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetPortList").mock(side_effect=paged_ports)
+    async with DataGoKrMaritimeClient("data-go-test-key") as client:
+        ports = [item async for item in client.iter_ports(page_size=2, max_pages=2)]
+    assert [port.port_id for port in ports] == ["P01", "P02", "P03"]
+    assert len(route.calls) == 2
+
+    async with DataGoKrMaritimeClient("data-go-test-key") as client:
+        with pytest.raises(KricServerError, match="exceeded max_pages=1"):
+            _ = [item async for item in client.iter_ports(page_size=2, max_pages=1)]
+
+
+@respx.mock
+async def test_maritime_reference_iterators_stop_at_total_count_when_last_page_is_exactly_full():
+    def page_item(request: httpx.Request, item_key: str, name_key: str, prefix: str) -> httpx.Response:
+        page_no = request.url.params["pageNo"]
+        assert request.url.params["numOfRows"] == "1"
+        return httpx.Response(
+            200,
+            json={"response": {"header": {"resultCode": "00"}, "body": {"items": {"item": {
+                item_key: f"{prefix}{page_no}", name_key: f"{prefix} 이름 {page_no}"
+            }}, "totalCount": 2}}},
+        )
+
+    ports = respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetPortList").mock(
+        side_effect=lambda request: page_item(request, "nodeId", "nodeNm", "P")
+    )
+    terminals = respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetPsnshipTrminlList").mock(
+        side_effect=lambda request: page_item(request, "terminalId", "terminalNm", "T")
+    )
+    ship_types = respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetShipKndList").mock(
+        side_effect=lambda request: page_item(request, "shipKndId", "shipKndNm", "S")
+    )
+
+    async with DataGoKrMaritimeClient("data-go-test-key") as client:
+        port_rows = [item async for item in client.iter_ports(page_size=1, max_pages=2)]
+        terminal_rows = [item async for item in client.iter_ferry_terminals(page_size=1, max_pages=2)]
+        ship_type_rows = [item async for item in client.iter_ferry_ship_types(page_size=1, max_pages=2)]
+
+    assert [item.port_id for item in port_rows] == ["P1", "P2"]
+    assert [item.terminal_id for item in terminal_rows] == ["T1", "T2"]
+    assert [item.ship_type_id for item in ship_type_rows] == ["S1", "S2"]
+    assert len(ports.calls) == len(terminals.calls) == len(ship_types.calls) == 2
+
+
+@respx.mock
+async def test_maritime_reference_iterator_rejects_repeated_pages_with_unchanged_total_count():
+    route = respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetPortList").mock(
+        return_value=httpx.Response(
+            200,
+            json={"response": {"header": {"resultCode": "00"}, "body": {"items": {"item": {
+                "nodeId": "P01", "nodeNm": "반복 항구"
+            }}, "totalCount": 2}}},
+        )
+    )
+    async with DataGoKrMaritimeClient("data-go-test-key") as client:
+        with pytest.raises(KricServerError, match="duplicate reference identity"):
+            _ = [item async for item in client.iter_ports(page_size=1, max_pages=2)]
+    assert len(route.calls) == 2
+
+
+@respx.mock
 async def test_coastal_schedule_uses_documented_required_query_and_preserves_codes():
     route = respx.get("https://apis.data.go.kr/B554035/oprt-schd-info-v2/get-oprt-schd-info-v2").mock(
         return_value=httpx.Response(200, json={"header": {"resultCode": "00"}, "body": {"items": {"item": {

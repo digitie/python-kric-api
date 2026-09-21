@@ -55,7 +55,9 @@ asyncio.run(main())
 국내선박운항정보와 연안여객선 운항 스케줄은 KRIC와 다른 제공자이므로
 `DataGoKrMaritimeClient`로 분리합니다. KRIC 서비스키를 재사용하지 말고, 공공데이터포털에
 신청한 `DATA_GO_KR_SERVICE_KEY`를 전달하세요. 이 client는 저장·스케줄링·FastAPI를 포함하지
-않고, 한 번의 호출에서 요청한 페이지 하나만 반환합니다. 제공자 endpoint는 고정하며 외부 URL을
+않고, 한 번의 호출에서 요청한 페이지 하나만 반환합니다. 기준정보 전체가 필요하면
+`iter_ports()`, `iter_ferry_terminals()`, `iter_ferry_ship_types()`에 호출 예산인 `max_pages`를
+명시해 bounded pagination을 사용합니다. 제공자 endpoint는 고정하며 외부 URL을
 받지 않고 redirect도 거부하므로 서비스키가 다른 호스트로 전송되지 않습니다.
 
 ```python
@@ -81,6 +83,10 @@ async with DataGoKrMaritimeClient(os.environ["DATA_GO_KR_SERVICE_KEY"]) as clien
 - `get_ferry_ship_types()` → `GetShipKndList`
 - `get_coastal_ferry_schedules()` → 한국해양교통안전공단 `운항 스케줄 정보`의
   `get-oprt-schd-info-v2`
+
+기준정보 iterator는 provider의 `totalCount`와 누적 행 수가 같아질 때 종료합니다. 중간에
+빈 페이지·변경된 `totalCount`·초과 행·중복 기준정보 식별자가 나타나거나 `max_pages`를 모두 채우면 불완전한
+기준정보를 성공으로 저장하지 않도록 `KricServerError`를 발생시킵니다.
 
 TAGO 운항정보의 제공 필드 오탈자인 `vihicleNm`은 원문 `raw`에 그대로 보존하고,
 공개 모델에서는 `vessel_name`으로 제공합니다. 날짜·시각·요금·코드는 추정 변환하지 않습니다.
