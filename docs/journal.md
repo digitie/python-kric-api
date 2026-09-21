@@ -2,6 +2,15 @@
 
 ## 2026-09-21
 
+- 여객선 기준정보 소비자가 첫 페이지를 성공으로 저장하지 않도록 `iter_ports()`,
+  `iter_ferry_terminals()`, `iter_ferry_ship_types()`를 추가했다. iterator는 명시적인
+  `page_size`·`max_pages` 호출 예산 안에서만 순회하며, 상한을 모두 채우면 불완전한 결과를
+  성공으로 가장하지 않고 `KricServerError`를 낸다. `totalCount`를 누적 행 수와 비교해
+  page size의 정확한 배수도 다음 빈 페이지를 요청하지 않고 종료한다. 페이지 간 provider
+  식별자 중복도 오류로 처리한다. 실시간 운항 조회는 기존 단일 페이지 API로 유지한다.
+
+## 2026-09-21
+
 - RustFS 적대적 리뷰의 P1을 반영했다. HTTPS endpoint를 기본으로 강제하고 private
   loopback HTTP는 explicit opt-in으로만 허용한다. S3 인증·권한·bucket 설정·quota·서버·네트워크
   오류를 재시도 정책에 맞는 KRIC 예외로 구분했으며, timeout·retry·동시 업로드 상한과 `aclose()`를

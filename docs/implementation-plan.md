@@ -72,7 +72,7 @@ KRIC의 신청 절차는 [Open API 이용 절차](https://data.kric.go.kr/rips/s
 
 | 제공자·API | client 메서드 | 필수 선택 기준 | 수집·운영 주의점 |
 |---|---|---|---|
-| 국토교통부 `(TAGO) 국내선박운항정보` | `search_ports`, `get_domestic_ship_operations`, `get_ferry_terminals`, `get_ferry_ship_types` | 운항은 `depNodeId`, `depPlandTime(YYYYMMDD)` | 기준정보와 계획 운항을 분리 저장하고, 자동 페이지 순회·재시도를 하지 않는다. |
+| 국토교통부 `(TAGO) 국내선박운항정보` | `search_ports`, `get_domestic_ship_operations`, `get_ferry_terminals`, `get_ferry_ship_types` | 운항은 `depNodeId`, `depPlandTime(YYYYMMDD)` | 실시간 운항은 단일 페이지·재시도 없음으로 두고, 기준정보만 `iter_*` bounded pagination으로 누락 없이 동기화한다. |
 | 한국해양교통안전공단 `운항 스케줄 정보` | `get_coastal_ferry_schedules` | `rlvtYmd(YYYYMMDD)`, `psnshpNm` | 개발계정 일일 100건 안내를 넘지 않도록 소비 서비스가 요청·수집 예산을 관리한다. 운영계정은 별도 활용신청 대상이다. |
 
 두 API의 모델은 항구·터미널·선박종류·계획 운항·연안여객선 스케줄을 typed dataclass로

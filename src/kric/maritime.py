@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from datetime import date, datetime
 import math
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 
@@ -27,14 +27,17 @@ from .parse import as_raw_mapping, require_fields
 
 DOMESTIC_SHIP_BASE_URL = "https://apis.data.go.kr/1613000/DmstcShipNvgInfo"
 COASTAL_SCHEDULE_BASE_URL = "https://apis.data.go.kr/B554035/oprt-schd-info-v2"
+T = TypeVar("T")
 
 
 class DataGoKrMaritimeClient:
     """공공데이터포털의 국내선박·연안여객선 API client.
 
     ``service_key``에는 KRIC 키가 아니라 ``DATA_GO_KR_SERVICE_KEY``를 전달한다.
-    호출량을 예측하기 어렵기 때문에 모든 목록 API는 요청한 한 페이지만 반환하며,
-    자동 재시도나 자동 페이지 순회는 하지 않는다.
+    단일 페이지 메서드는 요청한 한 페이지만 반환하며 자동 재시도하지 않는다. 기준정보
+    동기화처럼 전체 목록이 필요한 소비자는 명시적 page size·max pages를 받는 bounded
+    iterator를 사용한다. 실시간 운항 조회는 호출량을 예측하기 어려우므로 단일 페이지를
+    기본으로 한다.
     """
 
     def __init__(
@@ -71,6 +74,19 @@ class DataGoKrMaritimeClient:
         payload = await self._get(DOMESTIC_SHIP_BASE_URL, "GetPortList", params, response_type="_type")
         return tuple(_parse_port(row) for row in _extract_items_or_empty(payload))
 
+    async def iter_ports(
+        self, *, name: str | None = None, page_size: int = 100, max_pages: int = 20
+    ) -> AsyncIterator[DomesticFerryPort]:
+        """항구 기준정보를 유한한 호출 예산 안에서 페이지 순회한다."""
+        async for item in self._iterate_pages(
+            lambda page_no: self._get_ports_page(name=name, page_no=page_no, num_of_rows=page_size),
+            page_size=page_size,
+            max_pages=max_pages,
+            operation="GetPortList",
+            identity=lambda item: item.port_id,
+        ):
+            yield item
+
     async def get_domestic_ship_operations(
         self, *, departure_port_id: str, departure_date: date | str, page_no: int = 1, num_of_rows: int = 100
     ) -> tuple[DomesticShipOperation, ...]:
@@ -85,17 +101,41 @@ class DataGoKrMaritimeClient:
         )
         return tuple(_parse_domestic_operation(row) for row in _extract_items_or_empty(payload))
 
-    async def get_ferry_terminals(self) -> tuple[FerryTerminal, ...]:
+    async def get_ferry_terminals(self, *, page_no: int = 1, num_of_rows: int = 100) -> tuple[FerryTerminal, ...]:
         """국내선박운항정보가 제공하는 여객선 터미널 기준정보를 조회한다."""
         payload = await self._get(
-            DOMESTIC_SHIP_BASE_URL, "GetPsnshipTrminlList", {}, response_type="_type"
+            DOMESTIC_SHIP_BASE_URL, "GetPsnshipTrminlList", _page_params(page_no, num_of_rows), response_type="_type"
         )
         return tuple(_parse_terminal(row) for row in _extract_items_or_empty(payload))
 
-    async def get_ferry_ship_types(self) -> tuple[FerryShipType, ...]:
+    async def iter_ferry_terminals(self, *, page_size: int = 100, max_pages: int = 20) -> AsyncIterator[FerryTerminal]:
+        """여객선 터미널 기준정보를 bounded pagination으로 반환한다."""
+        async for item in self._iterate_pages(
+            lambda page_no: self._get_terminals_page(page_no=page_no, num_of_rows=page_size),
+            page_size=page_size,
+            max_pages=max_pages,
+            operation="GetPsnshipTrminlList",
+            identity=lambda item: item.terminal_id,
+        ):
+            yield item
+
+    async def get_ferry_ship_types(self, *, page_no: int = 1, num_of_rows: int = 100) -> tuple[FerryShipType, ...]:
         """국내선박운항정보가 제공하는 여객선 종류 기준정보를 조회한다."""
-        payload = await self._get(DOMESTIC_SHIP_BASE_URL, "GetShipKndList", {}, response_type="_type")
+        payload = await self._get(
+            DOMESTIC_SHIP_BASE_URL, "GetShipKndList", _page_params(page_no, num_of_rows), response_type="_type"
+        )
         return tuple(_parse_ship_type(row) for row in _extract_items_or_empty(payload))
+
+    async def iter_ferry_ship_types(self, *, page_size: int = 100, max_pages: int = 20) -> AsyncIterator[FerryShipType]:
+        """여객선 종류 기준정보를 bounded pagination으로 반환한다."""
+        async for item in self._iterate_pages(
+            lambda page_no: self._get_ship_types_page(page_no=page_no, num_of_rows=page_size),
+            page_size=page_size,
+            max_pages=max_pages,
+            operation="GetShipKndList",
+            identity=lambda item: item.ship_type_id,
+        ):
+            yield item
 
     async def get_coastal_ferry_schedules(
         self,
@@ -143,6 +183,74 @@ class DataGoKrMaritimeClient:
         if _raise_for_error_envelope(payload):
             return {"body": {"items": [], "totalCount": 0}}
         return payload
+
+    async def _get_ports_page(
+        self, *, name: str | None, page_no: int, num_of_rows: int
+    ) -> tuple[tuple[DomesticFerryPort, ...], int]:
+        params = _page_params(page_no, num_of_rows)
+        if name is not None:
+            params["nodeNm"] = _required_text(name, "name")
+        payload = await self._get(DOMESTIC_SHIP_BASE_URL, "GetPortList", params, response_type="_type")
+        return (
+            tuple(_parse_port(row) for row in _extract_items_or_empty(payload, allow_empty_with_total=True)),
+            _total_count(payload),
+        )
+
+    async def _get_terminals_page(self, *, page_no: int, num_of_rows: int) -> tuple[tuple[FerryTerminal, ...], int]:
+        payload = await self._get(
+            DOMESTIC_SHIP_BASE_URL, "GetPsnshipTrminlList", _page_params(page_no, num_of_rows), response_type="_type"
+        )
+        return (
+            tuple(_parse_terminal(row) for row in _extract_items_or_empty(payload, allow_empty_with_total=True)),
+            _total_count(payload),
+        )
+
+    async def _get_ship_types_page(self, *, page_no: int, num_of_rows: int) -> tuple[tuple[FerryShipType, ...], int]:
+        payload = await self._get(
+            DOMESTIC_SHIP_BASE_URL, "GetShipKndList", _page_params(page_no, num_of_rows), response_type="_type"
+        )
+        return (
+            tuple(_parse_ship_type(row) for row in _extract_items_or_empty(payload, allow_empty_with_total=True)),
+            _total_count(payload),
+        )
+
+    async def _iterate_pages(
+        self,
+        fetch_page: Callable[[int], Awaitable[tuple[tuple[T, ...], int]]],
+        *,
+        page_size: int,
+        max_pages: int,
+        operation: str,
+        identity: Callable[[T], str | None],
+    ) -> AsyncIterator[T]:
+        _page_params(1, page_size)
+        if isinstance(max_pages, bool) or not isinstance(max_pages, int) or max_pages < 1:
+            raise KricInvalidParameterError("max_pages must be a positive integer")
+        expected_total: int | None = None
+        yielded = 0
+        seen_identities: set[str] = set()
+        for page_no in range(1, max_pages + 1):
+            rows, total_count = await fetch_page(page_no)
+            if expected_total is None:
+                expected_total = total_count
+            elif total_count != expected_total:
+                raise KricServerError(f"data.go.kr maritime {operation} totalCount changed during pagination")
+            if yielded + len(rows) > total_count:
+                raise KricServerError(f"data.go.kr maritime {operation} returned more rows than totalCount")
+            for row in rows:
+                row_identity = identity(row)
+                if not row_identity:
+                    raise KricServerError(f"data.go.kr maritime {operation} reference row has no identity")
+                if row_identity in seen_identities:
+                    raise KricServerError(f"data.go.kr maritime {operation} returned a duplicate reference identity")
+                seen_identities.add(row_identity)
+                yield row
+            yielded += len(rows)
+            if yielded == total_count:
+                return
+            if not rows:
+                raise KricServerError(f"data.go.kr maritime {operation} returned an empty page before totalCount")
+        raise KricServerError(f"data.go.kr maritime {operation} exceeded max_pages={max_pages}")
 
 
 def _required_text(value: str, name: str) -> str:
@@ -201,7 +309,9 @@ def _raise_for_error_envelope(payload: Mapping[str, Any]) -> bool:
     return False
 
 
-def _extract_items_or_empty(payload: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+def _extract_items_or_empty(
+    payload: Mapping[str, Any], *, allow_empty_with_total: bool = False
+) -> tuple[Mapping[str, Any], ...]:
     root = payload.get("response")
     envelope = root if isinstance(root, Mapping) else payload
     body = envelope.get("body") if isinstance(envelope, Mapping) else None
@@ -209,12 +319,12 @@ def _extract_items_or_empty(payload: Mapping[str, Any]) -> tuple[Mapping[str, An
         raise KricServerError("data.go.kr maritime response does not contain a body object")
     items = body.get("items")
     if items in (None, "", []):
-        return _empty_or_invalid(body)
+        return _empty_or_invalid(body, allow_empty_with_total=allow_empty_with_total)
     if not isinstance(items, Mapping):
         raise KricServerError("data.go.kr maritime response items must be an object")
     item = items.get("item")
     if item in (None, "", []):
-        return _empty_or_invalid(body)
+        return _empty_or_invalid(body, allow_empty_with_total=allow_empty_with_total)
     if isinstance(item, Mapping):
         return (item,)
     if isinstance(item, list) and all(isinstance(row, Mapping) for row in item):
@@ -222,16 +332,34 @@ def _extract_items_or_empty(payload: Mapping[str, Any]) -> tuple[Mapping[str, An
     raise KricServerError("data.go.kr maritime response item must be an object or list")
 
 
-def _empty_or_invalid(body: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+def _empty_or_invalid(body: Mapping[str, Any], *, allow_empty_with_total: bool = False) -> tuple[Mapping[str, Any], ...]:
     total = body.get("totalCount")
     if total is None:
         raise KricServerError("data.go.kr maritime empty response must contain totalCount")
     try:
-        if int(str(total)) > 0:
+        if int(str(total)) > 0 and not allow_empty_with_total:
             raise KricServerError("data.go.kr maritime response has a positive count without items")
     except ValueError as exc:
         raise KricServerError("data.go.kr maritime response totalCount must be an integer") from exc
     return ()
+
+
+def _total_count(payload: Mapping[str, Any]) -> int:
+    root = payload.get("response")
+    envelope = root if isinstance(root, Mapping) else payload
+    body = envelope.get("body") if isinstance(envelope, Mapping) else None
+    if not isinstance(body, Mapping):
+        raise KricServerError("data.go.kr maritime response does not contain a body object")
+    value = body.get("totalCount")
+    if value is None:
+        raise KricServerError("data.go.kr maritime response does not contain totalCount")
+    try:
+        total = int(str(value))
+    except (TypeError, ValueError) as exc:
+        raise KricServerError("data.go.kr maritime totalCount must be a non-negative integer") from exc
+    if total < 0:
+        raise KricServerError("data.go.kr maritime totalCount must be a non-negative integer")
+    return total
 
 
 def _parse_port(row: Mapping[str, Any]) -> DomesticFerryPort:
