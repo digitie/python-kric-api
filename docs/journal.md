@@ -2,6 +2,10 @@
 
 ## 2026-09-21
 
+- 해양수산부 파일 `15121268`의 무인증 항만가이드라인 CSV provider를 추가했다. CP949 원문에서
+  항구명·위도·경도·순서·선수방위를 typed model로 보존하고, 검증된 파일을 RustFS에 checksum key로
+  비동기 보관한다. 항만 중심점을 임의 추정하지 않으며 좌표 불일치는 오류로 처리한다.
+
 - 여객선 기준정보 소비자가 첫 페이지를 성공으로 저장하지 않도록 `iter_ports()`,
   `iter_ferry_terminals()`, `iter_ferry_ship_types()`를 추가했다. iterator는 명시적인
   `page_size`·`max_pages` 호출 예산 안에서만 순회하며, 상한을 모두 채우면 불완전한 결과를

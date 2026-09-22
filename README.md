@@ -98,6 +98,12 @@ KOMSA의 선택 응답열 `filters`는 typed 모델의 필수 계약과 충돌�
 
 ## 공개 파일 데이터
 
+해양수산부 `15121268` 항만가이드라인 위치 CSV도 `PortGuidelineFileClient`로 서비스키 없이
+비동기 다운로드한다. 원문은 CP949 CSV이며 항구명·위도·경도·원본 위치 순서·선수방위를
+`PortGuidelineLocation`으로 보존한다. `get_locations_to_rustfs()`를 사용하면 검증된 CSV를
+공용 RustFS에 checksum 기반 key로 보관한 뒤 같은 bytes를 파싱한다. 이 점 자료는 항만 중심점으로
+추정하지 않으므로, 소비자는 동일 항구명의 점을 표시하거나 명시적인 집계 규칙을 적용해야 한다.
+
 API 키가 필요 없고 갱신 주기가 낮은 기준정보는 공개 파일을 우선 사용합니다. 현재
 `KricFileClient.get_nationwide_station_info()`는 포털의 **전국 도시광역철도 역사정보**
 (dataset `1294`, XLSX)를 인증키 없이 내려받아 `FileStationInfo`로 반환합니다.

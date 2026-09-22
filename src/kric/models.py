@@ -170,6 +170,28 @@ class DomesticFerryPort:
 
 
 @dataclass(frozen=True, slots=True)
+class PortGuidelineLocation:
+    """해양수산부 항만가이드라인 공개 CSV의 항구 위치 한 점.
+
+    이 자료의 점들은 항만 중심점이라고 문서화되어 있지 않다. 소비자는 같은 항구명의
+    점들을 필요에 맞게 표시하거나 집계하되, 원본 순서와 선수방위 값을 잃지 않는다.
+    """
+
+    table_kind: str | None
+    row_kind: str | None
+    position_order: str | None
+    port_name: str | None
+    latitude: float | None
+    longitude: float | None
+    heading: str | None
+    registered_at: str | None
+    raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "raw", _freeze_raw(self.raw))
+
+
+@dataclass(frozen=True, slots=True)
 class FerryTerminal:
     """TAGO 여객선 터미널 기준정보."""
 
