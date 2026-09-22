@@ -147,6 +147,26 @@ class FileStationInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class StationCodeInfo:
+    """레일포털 자료실의 역사 코드 파일 한 행.
+
+    표시명과 달리 이 파일의 세 코드 필드는 KRIC 인증 OpenAPI의 요청 식별자다. 소비자는
+    역명으로 코드를 추정하지 않고 이 원문을 기준으로 단건 상세·시간표 요청을 만든다.
+    """
+
+    rail_operator_code: str | None
+    rail_operator_name: str | None
+    line_code: str | None
+    line_name: str | None
+    station_code: str | None
+    station_name: str | None
+    raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "raw", _freeze_raw(self.raw))
+
+
+@dataclass(frozen=True, slots=True)
 class KricFileDownload:
     """인증키 없이 내려받은 KRIC 공개 파일과 출처 식별자."""
 

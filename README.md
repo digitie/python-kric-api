@@ -122,6 +122,20 @@ async with KricFileClient() as client:
 수정일/데이터 기준일을 기록하고 월 1회 또는 포털 수정 감지 시에만 재수집해야 합니다.
 운행시각표·실시간성 있는 정보는 파일이 아닌 해당 Open API를 사용합니다.
 
+인증 OpenAPI의 정확한 요청 코드는 자료실의 **역사 코드정보** 첨부 XLSX(공지 `17`, 파일 `1`)에서
+가져옵니다. `get_station_codes()`와 `get_station_codes_to_rustfs()`는 각각 typed
+`StationCodeInfo`와 원본 RustFS 보관을 제공한다. 이 파일의 `RAIL_OPR_ISTT_CD`, `LN_CD`,
+`STIN_CD`만 인증 API 파라미터로 사용하며, 표시명·역 번호를 코드로 추정하지 않습니다.
+
+```python
+from kric import KricFileClient
+
+async with KricFileClient() as client:
+    codes = await client.get_station_codes()
+    first = codes[0]
+    print(first.rail_operator_code, first.line_code, first.station_code)
+```
+
 다른 XLSX 파일은 `download_dataset()`과 `parse_xlsx_table()`로 먼저 원문 헤더·행을 안전하게
 읽을 수 있습니다. 시설별 typed 모델은 포털의 파일 계약을 실제로 확인한 뒤 추가합니다.
 다운로드는 기본 10 MiB, XLSX 압축 해제 크기는 64 MiB, 첫 worksheet는 100,000행·256열로
