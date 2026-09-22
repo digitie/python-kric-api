@@ -122,7 +122,7 @@ async with KricFileClient() as client:
 수정일/데이터 기준일을 기록하고 월 1회 또는 포털 수정 감지 시에만 재수집해야 합니다.
 운행시각표·실시간성 있는 정보는 파일이 아닌 해당 Open API를 사용합니다.
 
-인증 OpenAPI의 정확한 요청 코드는 자료실의 **역사 코드정보** 첨부 XLSX(공지 `17`, 파일 `1`)에서
+인증 OpenAPI의 정확한 요청 코드는 자료실 게시물 `17`의 **역사 코드정보** 첨부 XLSX(파일 `1`)에서
 가져옵니다. `get_station_codes()`와 `get_station_codes_to_rustfs()`는 각각 typed
 `StationCodeInfo`와 원본 RustFS 보관을 제공한다. 이 파일의 `RAIL_OPR_ISTT_CD`, `LN_CD`,
 `STIN_CD`만 인증 API 파라미터로 사용하며, 표시명·역 번호를 코드로 추정하지 않습니다.
