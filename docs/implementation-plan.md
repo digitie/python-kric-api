@@ -70,6 +70,11 @@ KRIC의 신청 절차는 [Open API 이용 절차](https://data.kric.go.kr/rips/s
 
 ## 공공데이터포털 여객선 provider
 
+무인증 파일 `15121268` 해양수산부 항만가이드라인 위치는 항구명·WGS84 위도/경도와 원시
+순서/선수방위를 제공한다. `PortGuidelineFileClient`가 고정 다운로드 URL만 호출하고 redirect와
+형식 오류를 거부한다. 1회성에 가까운 파일이므로 소비자는 3일 기준정보 job에서 RustFS에
+checksum 보관하고, 항구명 연결의 모호성은 소비자 DB에서 명시적으로 보고해야 한다.
+
 | 제공자·API | client 메서드 | 필수 선택 기준 | 수집·운영 주의점 |
 |---|---|---|---|
 | 국토교통부 `(TAGO) 국내선박운항정보` | `search_ports`, `get_domestic_ship_operations`, `get_ferry_terminals`, `get_ferry_ship_types` | 운항은 `depNodeId`, `depPlandTime(YYYYMMDD)` | 실시간 운항은 단일 페이지·재시도 없음으로 두고, 기준정보만 `iter_*` bounded pagination으로 누락 없이 동기화한다. |

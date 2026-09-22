@@ -98,6 +98,12 @@ KOMSA의 선택 응답열 `filters`는 typed 모델의 필수 계약과 충돌�
 
 ## 공개 파일 데이터
 
+해양수산부 `15121268` 항만가이드라인 위치 CSV도 `PortGuidelineFileClient`로 서비스키 없이
+비동기 다운로드한다. 원문은 CP949 CSV이며 항구명·위도·경도·원본 위치 순서·선수방위를
+`PortGuidelineLocation`으로 보존한다. `get_locations_to_rustfs()`를 사용하면 검증된 CSV를
+공용 RustFS에 checksum 기반 key로 보관한 뒤 같은 bytes를 파싱한다. 이 점 자료는 항만 중심점으로
+추정하지 않으므로, 소비자는 동일 항구명의 점을 표시하거나 명시적인 집계 규칙을 적용해야 한다.
+
 API 키가 필요 없고 갱신 주기가 낮은 기준정보는 공개 파일을 우선 사용합니다. 현재
 `KricFileClient.get_nationwide_station_info()`는 포털의 **전국 도시광역철도 역사정보**
 (dataset `1294`, XLSX)를 인증키 없이 내려받아 `FileStationInfo`로 반환합니다.
@@ -115,6 +121,20 @@ async with KricFileClient() as client:
 **코드로 추정하지 않습니다**. 원문 열은 `raw`에 보존합니다. 소비 서비스는 파일의
 수정일/데이터 기준일을 기록하고 월 1회 또는 포털 수정 감지 시에만 재수집해야 합니다.
 운행시각표·실시간성 있는 정보는 파일이 아닌 해당 Open API를 사용합니다.
+
+인증 OpenAPI의 정확한 요청 코드는 자료실 게시물 `17`의 **역사 코드정보** 첨부 XLSX(파일 `1`)에서
+가져옵니다. `get_station_codes()`와 `get_station_codes_to_rustfs()`는 각각 typed
+`StationCodeInfo`와 원본 RustFS 보관을 제공한다. 이 파일의 `RAIL_OPR_ISTT_CD`, `LN_CD`,
+`STIN_CD`만 인증 API 파라미터로 사용하며, 표시명·역 번호를 코드로 추정하지 않습니다.
+
+```python
+from kric import KricFileClient
+
+async with KricFileClient() as client:
+    codes = await client.get_station_codes()
+    first = codes[0]
+    print(first.rail_operator_code, first.line_code, first.station_code)
+```
 
 다른 XLSX 파일은 `download_dataset()`과 `parse_xlsx_table()`로 먼저 원문 헤더·행을 안전하게
 읽을 수 있습니다. 시설별 typed 모델은 포털의 파일 계약을 실제로 확인한 뒤 추가합니다.

@@ -20,9 +20,10 @@ from kric import (
     ServiceDayCode,
     StoredObject,
     parse_nationwide_station_info_xlsx,
+    parse_station_code_xlsx,
     parse_xlsx_table,
 )
-from kric.files import FILE_DOWNLOAD_URL
+from kric.files import FILE_DOWNLOAD_URL, STATION_CODE_FILE_URL
 from kric.parse import (
     extract_items,
     float_or_none,
@@ -225,6 +226,20 @@ def _station_info_workbook_bytes() -> bytes:
     return output.getvalue()
 
 
+def _station_code_workbook_bytes() -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append([
+        "RAIL_OPR_ISTT_CD", "RAIL_OPR_ISTT_NM", "LN_CD", "LN_NM", "STIN_CD", "STIN_NM",
+    ])
+    sheet.append(["S1", "서울교통공사", "1", "1호선", "0150", "서울역"])
+    sheet.cell(2, 5).value = 150
+    sheet.cell(2, 5).number_format = "0000"
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
 def test_public_station_file_parser_keeps_file_identity_and_unknown_columns():
     rows = parse_nationwide_station_info_xlsx(_station_info_workbook_bytes())
 
@@ -260,6 +275,73 @@ async def test_public_file_download_requires_no_service_key_and_parses_station_d
     assert dict(params) == {"type": "filedata", "id": "1294", "operation": "1"}
     assert "serviceKey" not in params
     assert rows[0].station_name == "서울역"
+
+
+def test_station_code_file_parser_keeps_openapi_codes_without_name_inference():
+    rows = parse_station_code_xlsx(_station_code_workbook_bytes())
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert (row.rail_operator_code, row.line_code, row.station_code) == ("S1", "1", "0150")
+    assert (row.rail_operator_name, row.line_name, row.station_name) == ("서울교통공사", "1호선", "서울역")
+    assert row.raw["STIN_CD"] == "0150"
+
+
+@respx.mock
+async def test_station_code_attachment_downloads_without_service_key_and_archives_verified_xlsx():
+    route = respx.get(STATION_CODE_FILE_URL).mock(
+        return_value=httpx.Response(
+            200,
+            content=_station_code_workbook_bytes(),
+            headers={
+                "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "content-disposition": 'attachment; filename="station-codes.xlsx"',
+                "etag": '"revision-1"',
+            },
+        )
+    )
+    store = _RecordingStore()
+    async with KricFileClient() as client:
+        codes, stored = await client.get_station_codes_to_rustfs(store)  # type: ignore[arg-type]
+
+    assert route.called
+    assert codes[0].station_code == "0150"
+    assert stored.object_key.startswith("provider-raw/kric/station-codes/notice-17/file-1/")
+    assert stored.object_key.endswith(".xlsx")
+    assert store.uploads[0]["content_type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    ("status_code", "content", "headers", "error"),
+    [
+        (302, b"", {"location": "https://redirected.invalid"}, "redirect denied"),
+        (429, b"", {}, "rate limited"),
+        (200, b"", {}, "response is empty"),
+        (200, b"small", {"content-length": "100"}, "max_download_bytes"),
+    ],
+)
+async def test_station_code_attachment_rejects_unsafe_or_incomplete_downloads(
+    status_code, content, headers, error
+):
+    respx.get(STATION_CODE_FILE_URL).mock(
+        return_value=httpx.Response(status_code, content=content, headers=headers)
+    )
+    async with KricFileClient(max_download_bytes=10) as client:
+        with pytest.raises((KricRateLimitError, KricServerError), match=error):
+            await client.get_station_codes()
+
+
+def test_station_code_file_parser_rejects_header_only_workbook():
+    workbook = Workbook()
+    workbook.active.append([
+        "RAIL_OPR_ISTT_CD", "RAIL_OPR_ISTT_NM", "LN_CD", "LN_NM", "STIN_CD", "STIN_NM",
+    ])
+    output = BytesIO()
+    workbook.save(output)
+
+    with pytest.raises(KricServerError, match="contains no code rows"):
+        parse_station_code_xlsx(output.getvalue())
 
 
 class _RecordingStore:

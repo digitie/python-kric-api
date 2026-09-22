@@ -3,11 +3,15 @@
 from .client import KricClient
 from .files import (
     NATIONWIDE_STATION_INFO_DATASET_ID,
+    STATION_CODE_FILE_ID,
+    STATION_CODE_NOTICE_ID,
     KricFileClient,
     parse_xlsx_table,
     parse_nationwide_station_info_xlsx,
+    parse_station_code_xlsx,
 )
 from .maritime import DataGoKrMaritimeClient
+from .port_guidelines import PORT_GUIDELINE_SOURCE_ID, PortGuidelineFileClient, parse_port_guideline_locations
 from .storage import RustfsObjectStore, StoredObject
 from .exceptions import (
     KricAuthError,
@@ -21,8 +25,10 @@ from .exceptions import (
 from .models import (
     ServiceDayCode,
     FileStationInfo,
+    StationCodeInfo,
     CoastalFerrySchedule,
     DomesticFerryPort,
+    PortGuidelineLocation,
     DomesticShipOperation,
     FerryShipType,
     FerryTerminal,
@@ -39,6 +45,7 @@ __all__ = [
     "KricAuthError",
     "KricClient",
     "DataGoKrMaritimeClient",
+    "PortGuidelineFileClient",
     "KricFileClient",
     "RustfsObjectStore",
     "StoredObject",
@@ -50,15 +57,22 @@ __all__ = [
     "KricStorageConfigurationError",
     "ServiceDayCode",
     "FileStationInfo",
+    "StationCodeInfo",
     "CoastalFerrySchedule",
     "DomesticFerryPort",
+    "PortGuidelineLocation",
     "DomesticShipOperation",
     "FerryShipType",
     "FerryTerminal",
     "KricFileDownload",
     "KricFileTable",
     "NATIONWIDE_STATION_INFO_DATASET_ID",
+    "STATION_CODE_NOTICE_ID",
+    "STATION_CODE_FILE_ID",
+    "PORT_GUIDELINE_SOURCE_ID",
+    "parse_port_guideline_locations",
     "parse_nationwide_station_info_xlsx",
+    "parse_station_code_xlsx",
     "parse_xlsx_table",
     "StationFacility",
     "StationInfo",

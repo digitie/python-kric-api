@@ -147,6 +147,26 @@ class FileStationInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class StationCodeInfo:
+    """레일포털 자료실의 역사 코드 파일 한 행.
+
+    표시명과 달리 이 파일의 세 코드 필드는 KRIC 인증 OpenAPI의 요청 식별자다. 소비자는
+    역명으로 코드를 추정하지 않고 이 원문을 기준으로 단건 상세·시간표 요청을 만든다.
+    """
+
+    rail_operator_code: str | None
+    rail_operator_name: str | None
+    line_code: str | None
+    line_name: str | None
+    station_code: str | None
+    station_name: str | None
+    raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "raw", _freeze_raw(self.raw))
+
+
+@dataclass(frozen=True, slots=True)
 class KricFileDownload:
     """인증키 없이 내려받은 KRIC 공개 파일과 출처 식별자."""
 
@@ -155,6 +175,8 @@ class KricFileDownload:
     source_url: str
     content_type: str | None
     content: bytes = field(repr=False)
+    content_disposition: str | None = None
+    etag: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,6 +185,28 @@ class DomesticFerryPort:
 
     port_id: str | None
     port_name: str | None
+    raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "raw", _freeze_raw(self.raw))
+
+
+@dataclass(frozen=True, slots=True)
+class PortGuidelineLocation:
+    """해양수산부 항만가이드라인 공개 CSV의 항구 위치 한 점.
+
+    이 자료의 점들은 항만 중심점이라고 문서화되어 있지 않다. 소비자는 같은 항구명의
+    점들을 필요에 맞게 표시하거나 집계하되, 원본 순서와 선수방위 값을 잃지 않는다.
+    """
+
+    table_kind: str | None
+    row_kind: str | None
+    position_order: str | None
+    port_name: str | None
+    latitude: float | None
+    longitude: float | None
+    heading: str | None
+    registered_at: str | None
     raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:

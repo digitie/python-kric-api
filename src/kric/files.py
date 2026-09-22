@@ -21,13 +21,18 @@ from .exceptions import (
     KricRateLimitError,
     KricServerError,
 )
-from .models import FileStationInfo, KricFileDownload, KricFileTable
+from .models import FileStationInfo, KricFileDownload, KricFileTable, StationCodeInfo
 from .storage import RustfsObjectStore, StoredObject
 from .parse import as_raw_mapping, float_or_none, require_fields, string_or_none
 
 FILE_DOWNLOAD_URL = "https://data.kric.go.kr/rips/dataset/download.file"
 KRIC_FILE_HOST = "data.kric.go.kr"
 NATIONWIDE_STATION_INFO_DATASET_ID = 1294
+STATION_CODE_NOTICE_ID = 17
+STATION_CODE_FILE_ID = 1
+STATION_CODE_FILE_URL = (
+    "https://data.kric.go.kr/rips/download.file?type=L&id=17&answerId=17&fileId=1"
+)
 DEFAULT_MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024
 DEFAULT_MAX_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
 DEFAULT_MAX_ROWS = 100_000
@@ -38,6 +43,14 @@ _STATION_INFO_REQUIRED_HEADERS = (
     "운영노선",
     "역 번호",
     "역명(한글)",
+)
+_STATION_CODE_REQUIRED_HEADERS = (
+    "RAIL_OPR_ISTT_CD",
+    "RAIL_OPR_ISTT_NM",
+    "LN_CD",
+    "LN_NM",
+    "STIN_CD",
+    "STIN_NM",
 )
 _ZERO_PADDED_NUMBER_FORMAT = re.compile(r"(?P<prefix>(?:\\.)*)(?P<zeros>0+)$")
 
@@ -113,6 +126,8 @@ class KricFileClient:
                         raise KricServerError("KRIC public-file response exceeds max_download_bytes")
                 source_url = str(response.request.url)
                 content_type = response.headers.get("content-type")
+                content_disposition = response.headers.get("content-disposition")
+                etag = response.headers.get("etag")
         except httpx.HTTPError as exc:
             raise KricNetworkError("KRIC public-file request failed") from exc
         if not content:
@@ -123,12 +138,25 @@ class KricFileClient:
             source_url=source_url,
             content_type=content_type,
             content=bytes(content),
+            content_disposition=content_disposition,
+            etag=etag,
         )
 
     async def get_nationwide_station_info(self) -> tuple[FileStationInfo, ...]:
         """무인증 전국 도시광역철도 역사정보(XLSX, dataset 1294)를 파싱한다."""
         download = await self.download_dataset(dataset_id=NATIONWIDE_STATION_INFO_DATASET_ID)
         return parse_nationwide_station_info_xlsx(
+            download.content,
+            max_compressed_bytes=self.max_download_bytes,
+            max_uncompressed_bytes=self.max_uncompressed_bytes,
+            max_rows=self.max_rows,
+            max_columns=self.max_columns,
+        )
+
+    async def get_station_codes(self) -> tuple[StationCodeInfo, ...]:
+        """공식 자료실 역사 코드 XLSX를 인증키 없이 파싱한다."""
+        download = await self._download_station_code_file()
+        return parse_station_code_xlsx(
             download.content,
             max_compressed_bytes=self.max_download_bytes,
             max_uncompressed_bytes=self.max_uncompressed_bytes,
@@ -173,6 +201,69 @@ class KricFileClient:
         )
         return stations, stored
 
+    async def get_station_codes_to_rustfs(
+        self, store: RustfsObjectStore
+    ) -> tuple[tuple[StationCodeInfo, ...], StoredObject]:
+        """역사 코드 XLSX를 검증·파싱하고 checksum 기반 RustFS key에 원문을 보관한다."""
+        download = await self._download_station_code_file()
+        codes = parse_station_code_xlsx(
+            download.content,
+            max_compressed_bytes=self.max_download_bytes,
+            max_uncompressed_bytes=self.max_uncompressed_bytes,
+            max_rows=self.max_rows,
+            max_columns=self.max_columns,
+        )
+        checksum = hashlib.sha256(download.content).hexdigest()
+        stored = await store.put_bytes(
+            object_key=store.prefixed_key(
+                "kric", "station-codes", f"notice-{STATION_CODE_NOTICE_ID}",
+                f"file-{STATION_CODE_FILE_ID}", f"{checksum}.xlsx",
+            ),
+            body=download.content,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        return codes, stored
+
+    async def _download_station_code_file(self) -> KricFileDownload:
+        """고정된 공식 자료실 첨부 파일만 받아 SSRF·redirect를 허용하지 않는다."""
+        try:
+            async with self._client.stream(
+                "GET", STATION_CODE_FILE_URL, follow_redirects=False
+            ) as response:
+                if response.status_code == 429:
+                    raise KricRateLimitError("KRIC station-code file request rate limited: HTTP 429")
+                if 300 <= response.status_code < 400:
+                    raise KricServerError(
+                        f"KRIC station-code file redirect denied: HTTP {response.status_code}"
+                    )
+                if response.status_code >= 400:
+                    raise KricServerError(
+                        f"KRIC station-code file request failed: HTTP {response.status_code}"
+                    )
+                _check_content_length(response.headers.get("content-length"), self.max_download_bytes)
+                content = bytearray()
+                async for chunk in response.aiter_bytes():
+                    content.extend(chunk)
+                    if len(content) > self.max_download_bytes:
+                        raise KricServerError("KRIC station-code file response exceeds max_download_bytes")
+                source_url = str(response.request.url)
+                content_type = response.headers.get("content-type")
+                content_disposition = response.headers.get("content-disposition")
+                etag = response.headers.get("etag")
+        except httpx.HTTPError as exc:
+            raise KricNetworkError("KRIC station-code file request failed") from exc
+        if not content:
+            raise KricServerError("KRIC station-code file response is empty")
+        return KricFileDownload(
+            dataset_id=STATION_CODE_NOTICE_ID,
+            operation=STATION_CODE_FILE_ID,
+            source_url=source_url,
+            content_type=content_type,
+            content=bytes(content),
+            content_disposition=content_disposition,
+            etag=etag,
+        )
+
     async def _archive_download(
         self,
         store: RustfsObjectStore,
@@ -216,6 +307,33 @@ def parse_nationwide_station_info_xlsx(
             "KRIC station-info workbook is missing required headers: " + ", ".join(missing)
         )
     return tuple(parse_nationwide_station_info_row(row) for row in table.rows)
+
+
+def parse_station_code_xlsx(
+    content: bytes,
+    *,
+    max_compressed_bytes: int = DEFAULT_MAX_DOWNLOAD_BYTES,
+    max_uncompressed_bytes: int = DEFAULT_MAX_UNCOMPRESSED_BYTES,
+    max_rows: int = DEFAULT_MAX_ROWS,
+    max_columns: int = DEFAULT_MAX_COLUMNS,
+) -> tuple[StationCodeInfo, ...]:
+    """자료실의 첫 worksheet 역사 코드 행을 API 요청용 typed 식별자로 변환한다."""
+    table = parse_xlsx_table(
+        content,
+        max_compressed_bytes=max_compressed_bytes,
+        max_uncompressed_bytes=max_uncompressed_bytes,
+        max_rows=max_rows,
+        max_columns=max_columns,
+    )
+    missing = [header for header in _STATION_CODE_REQUIRED_HEADERS if header not in table.headers]
+    if missing:
+        raise KricServerError(
+            "KRIC station-code workbook is missing required headers: " + ", ".join(missing)
+        )
+    rows = tuple(parse_station_code_row(row) for row in table.rows)
+    if not rows:
+        raise KricServerError("KRIC station-code workbook contains no code rows")
+    return rows
 
 
 def parse_xlsx_table(
@@ -308,6 +426,21 @@ def parse_nationwide_station_info_row(row: Mapping[str, Any]) -> FileStationInfo
         road_address=raw.get("역 주소(도로명 주소)"),
         station_phone_number=raw.get("역사 전화번호"),
         data_reference_date=raw.get("데이터 기준일자"),
+        raw=raw,
+    )
+
+
+def parse_station_code_row(row: Mapping[str, Any]) -> StationCodeInfo:
+    """역사 코드 파일 한 행의 원시 코드와 표시명을 함께 보존한다."""
+    raw = as_raw_mapping(row)
+    require_fields(raw, "station-code file row", *_STATION_CODE_REQUIRED_HEADERS)
+    return StationCodeInfo(
+        rail_operator_code=raw.get("RAIL_OPR_ISTT_CD"),
+        rail_operator_name=raw.get("RAIL_OPR_ISTT_NM"),
+        line_code=raw.get("LN_CD"),
+        line_name=raw.get("LN_NM"),
+        station_code=raw.get("STIN_CD"),
+        station_name=raw.get("STIN_NM"),
         raw=raw,
     )
 
