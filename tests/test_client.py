@@ -293,7 +293,11 @@ async def test_station_code_attachment_downloads_without_service_key_and_archive
         return_value=httpx.Response(
             200,
             content=_station_code_workbook_bytes(),
-            headers={"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+            headers={
+                "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "content-disposition": 'attachment; filename="station-codes.xlsx"',
+                "etag": '"revision-1"',
+            },
         )
     )
     store = _RecordingStore()
@@ -305,6 +309,39 @@ async def test_station_code_attachment_downloads_without_service_key_and_archive
     assert stored.object_key.startswith("provider-raw/kric/station-codes/notice-17/file-1/")
     assert stored.object_key.endswith(".xlsx")
     assert store.uploads[0]["content_type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    ("status_code", "content", "headers", "error"),
+    [
+        (302, b"", {"location": "https://redirected.invalid"}, "redirect denied"),
+        (429, b"", {}, "rate limited"),
+        (200, b"", {}, "response is empty"),
+        (200, b"small", {"content-length": "100"}, "max_download_bytes"),
+    ],
+)
+async def test_station_code_attachment_rejects_unsafe_or_incomplete_downloads(
+    status_code, content, headers, error
+):
+    respx.get(STATION_CODE_FILE_URL).mock(
+        return_value=httpx.Response(status_code, content=content, headers=headers)
+    )
+    async with KricFileClient(max_download_bytes=10) as client:
+        with pytest.raises((KricRateLimitError, KricServerError), match=error):
+            await client.get_station_codes()
+
+
+def test_station_code_file_parser_rejects_header_only_workbook():
+    workbook = Workbook()
+    workbook.active.append([
+        "RAIL_OPR_ISTT_CD", "RAIL_OPR_ISTT_NM", "LN_CD", "LN_NM", "STIN_CD", "STIN_NM",
+    ])
+    output = BytesIO()
+    workbook.save(output)
+
+    with pytest.raises(KricServerError, match="contains no code rows"):
+        parse_station_code_xlsx(output.getvalue())
 
 
 class _RecordingStore:

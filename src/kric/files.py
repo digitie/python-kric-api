@@ -126,6 +126,8 @@ class KricFileClient:
                         raise KricServerError("KRIC public-file response exceeds max_download_bytes")
                 source_url = str(response.request.url)
                 content_type = response.headers.get("content-type")
+                content_disposition = response.headers.get("content-disposition")
+                etag = response.headers.get("etag")
         except httpx.HTTPError as exc:
             raise KricNetworkError("KRIC public-file request failed") from exc
         if not content:
@@ -136,6 +138,8 @@ class KricFileClient:
             source_url=source_url,
             content_type=content_type,
             content=bytes(content),
+            content_disposition=content_disposition,
+            etag=etag,
         )
 
     async def get_nationwide_station_info(self) -> tuple[FileStationInfo, ...]:
@@ -244,6 +248,8 @@ class KricFileClient:
                         raise KricServerError("KRIC station-code file response exceeds max_download_bytes")
                 source_url = str(response.request.url)
                 content_type = response.headers.get("content-type")
+                content_disposition = response.headers.get("content-disposition")
+                etag = response.headers.get("etag")
         except httpx.HTTPError as exc:
             raise KricNetworkError("KRIC station-code file request failed") from exc
         if not content:
@@ -254,6 +260,8 @@ class KricFileClient:
             source_url=source_url,
             content_type=content_type,
             content=bytes(content),
+            content_disposition=content_disposition,
+            etag=etag,
         )
 
     async def _archive_download(
@@ -322,7 +330,10 @@ def parse_station_code_xlsx(
         raise KricServerError(
             "KRIC station-code workbook is missing required headers: " + ", ".join(missing)
         )
-    return tuple(parse_station_code_row(row) for row in table.rows)
+    rows = tuple(parse_station_code_row(row) for row in table.rows)
+    if not rows:
+        raise KricServerError("KRIC station-code workbook contains no code rows")
+    return rows
 
 
 def parse_xlsx_table(

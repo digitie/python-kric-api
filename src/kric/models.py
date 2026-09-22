@@ -175,6 +175,8 @@ class KricFileDownload:
     source_url: str
     content_type: str | None
     content: bytes = field(repr=False)
+    content_disposition: str | None = None
+    etag: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
