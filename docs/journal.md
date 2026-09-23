@@ -1,5 +1,13 @@
 # 작업 기록
 
+## 2026-09-23
+
+- 국토교통부 TAGO `GetPsnshipTrminlList`의 실제 정상(`00`) 응답은 `totalCount` 없이
+  기준정보 전량을 반환할 수 있음을 확인했다. `DataGoKrMaritimeClient`의 bounded iterator는
+  이 명시적 non-paginated 성공 형태를 첫 페이지 한 번으로 종료하며, 다음 page를 추측
+  호출하지 않는다. 행 식별자 누락·중복 검증은 유지한다. `totalCount`가 있는 API는 기존의
+  전량·페이지 예산 검증을 계속 적용한다.
+
 ## 2026-09-21
 
 - 해양수산부 파일 `15121268`의 무인증 항만가이드라인 CSV provider를 추가했다. CP949 원문에서
