@@ -544,6 +544,25 @@ async def test_maritime_reference_iterator_fetches_all_bounded_pages_and_fails_c
 
 
 @respx.mock
+async def test_maritime_reference_iterator_accepts_a_complete_success_response_without_total_count():
+    route = respx.get("https://apis.data.go.kr/1613000/DmstcShipNvgInfo/GetPsnshipTrminlList").mock(
+        return_value=httpx.Response(
+            200,
+            json={"response": {"header": {"resultCode": "00"}, "body": {"items": {"item": [
+                {"terminalId": "T01", "terminalNm": "첫 터미널"},
+                {"terminalId": "T02", "terminalNm": "둘째 터미널"},
+            ]}}}},
+        )
+    )
+
+    async with DataGoKrMaritimeClient("data-go-test-key") as client:
+        rows = [item async for item in client.iter_ferry_terminals(page_size=1, max_pages=20)]
+
+    assert [row.terminal_id for row in rows] == ["T01", "T02"]
+    assert len(route.calls) == 1
+
+
+@respx.mock
 async def test_maritime_reference_iterators_stop_at_total_count_when_last_page_is_exactly_full():
     def page_item(request: httpx.Request, item_key: str, name_key: str, prefix: str) -> httpx.Response:
         page_no = request.url.params["pageNo"]

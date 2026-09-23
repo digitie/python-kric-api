@@ -13,7 +13,9 @@
   기반의 idempotent object key를 반환한다. HTTPS endpoint가 기본이며, 검증한 XLSX만 `.xlsx`
   객체로 보관한다. store는 async context manager로 연결 풀을 닫는다.
 - 여객선 기준정보는 명시적 호출 상한을 가진 비동기 pagination iterator로 전량을 읽는다.
-  운항 시간표·계획 운항은 quota를 예측할 수 없으므로 요청한 한 페이지만 반환한다.
+  TAGO가 `totalCount` 없이 전량을 주는 정상 기준정보 operation은 첫 응답만 읽고 다음
+  page를 추측 호출하지 않는다. 운항 시간표·계획 운항은 quota를 예측할 수 없으므로 요청한
+  한 페이지만 반환한다.
 - 서비스키 신청 전 단계이며 실제 성공 envelope와 역 편의시설 Open API 세부 필드는 키가 제거된
   fixture로 확인되지 않았다.
 

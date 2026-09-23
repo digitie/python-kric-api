@@ -186,7 +186,7 @@ class DataGoKrMaritimeClient:
 
     async def _get_ports_page(
         self, *, name: str | None, page_no: int, num_of_rows: int
-    ) -> tuple[tuple[DomesticFerryPort, ...], int]:
+    ) -> tuple[tuple[DomesticFerryPort, ...], int | None]:
         params = _page_params(page_no, num_of_rows)
         if name is not None:
             params["nodeNm"] = _required_text(name, "name")
@@ -196,7 +196,7 @@ class DataGoKrMaritimeClient:
             _total_count(payload),
         )
 
-    async def _get_terminals_page(self, *, page_no: int, num_of_rows: int) -> tuple[tuple[FerryTerminal, ...], int]:
+    async def _get_terminals_page(self, *, page_no: int, num_of_rows: int) -> tuple[tuple[FerryTerminal, ...], int | None]:
         payload = await self._get(
             DOMESTIC_SHIP_BASE_URL, "GetPsnshipTrminlList", _page_params(page_no, num_of_rows), response_type="_type"
         )
@@ -205,7 +205,7 @@ class DataGoKrMaritimeClient:
             _total_count(payload),
         )
 
-    async def _get_ship_types_page(self, *, page_no: int, num_of_rows: int) -> tuple[tuple[FerryShipType, ...], int]:
+    async def _get_ship_types_page(self, *, page_no: int, num_of_rows: int) -> tuple[tuple[FerryShipType, ...], int | None]:
         payload = await self._get(
             DOMESTIC_SHIP_BASE_URL, "GetShipKndList", _page_params(page_no, num_of_rows), response_type="_type"
         )
@@ -216,7 +216,7 @@ class DataGoKrMaritimeClient:
 
     async def _iterate_pages(
         self,
-        fetch_page: Callable[[int], Awaitable[tuple[tuple[T, ...], int]]],
+        fetch_page: Callable[[int], Awaitable[tuple[tuple[T, ...], int | None]]],
         *,
         page_size: int,
         max_pages: int,
@@ -231,6 +231,21 @@ class DataGoKrMaritimeClient:
         seen_identities: set[str] = set()
         for page_no in range(1, max_pages + 1):
             rows, total_count = await fetch_page(page_no)
+            # TAGO의 일부 기준정보 operation은 정상 `00` 응답인데도 `totalCount`와
+            # pagination을 제공하지 않고 전량을 한 번에 돌려준다. 이 경우 다음 page를
+            # 추측 호출하지 않는다. 응답의 고유 식별자 검증은 그대로 적용한다.
+            if total_count is None:
+                if page_no != 1:
+                    raise KricServerError(f"data.go.kr maritime {operation} omitted totalCount after pagination began")
+                for row in rows:
+                    row_identity = identity(row)
+                    if not row_identity:
+                        raise KricServerError(f"data.go.kr maritime {operation} reference row has no identity")
+                    if row_identity in seen_identities:
+                        raise KricServerError(f"data.go.kr maritime {operation} returned a duplicate reference identity")
+                    seen_identities.add(row_identity)
+                    yield row
+                return
             if expected_total is None:
                 expected_total = total_count
             elif total_count != expected_total:
@@ -344,7 +359,7 @@ def _empty_or_invalid(body: Mapping[str, Any], *, allow_empty_with_total: bool =
     return ()
 
 
-def _total_count(payload: Mapping[str, Any]) -> int:
+def _total_count(payload: Mapping[str, Any]) -> int | None:
     root = payload.get("response")
     envelope = root if isinstance(root, Mapping) else payload
     body = envelope.get("body") if isinstance(envelope, Mapping) else None
@@ -352,7 +367,7 @@ def _total_count(payload: Mapping[str, Any]) -> int:
         raise KricServerError("data.go.kr maritime response does not contain a body object")
     value = body.get("totalCount")
     if value is None:
-        raise KricServerError("data.go.kr maritime response does not contain totalCount")
+        return None
     try:
         total = int(str(value))
     except (TypeError, ValueError) as exc:
