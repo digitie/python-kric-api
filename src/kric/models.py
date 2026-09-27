@@ -121,6 +121,7 @@ class FileStationInfo:
 
     파일의 운영기관명·운영노선·역 번호는 Open API의 코드 필드와 별개다. 제공자가
     코드라고 명시하지 않은 표시값을 API 식별자로 추정하지 않는다.
+    위경도 범위 밖 좌표는 두 typed 값을 None으로 반환하며 원본은 raw에 보존한다.
     """
 
     rail_operator_name: str | None

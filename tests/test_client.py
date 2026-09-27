@@ -258,6 +258,33 @@ def test_public_station_file_parser_keeps_file_identity_and_unknown_columns():
     assert table.rows[0]["추가 열"] == "원문 보존"
 
 
+@pytest.mark.parametrize("longitude,latitude", [
+    (37.424805, 126.423637), (181, 37), (-181, 37), (127, -91),
+])
+def test_public_station_file_invalid_coordinates_keep_raw(longitude, latitude):
+    from kric.files import parse_nationwide_station_info_row
+
+    row = dict(parse_xlsx_table(_station_info_workbook_bytes()).rows[0])
+    row["역 위치(경도)"] = str(longitude)
+    row["역 위치(위도)"] = str(latitude)
+    station = parse_nationwide_station_info_row(row)
+    assert station.longitude is None and station.latitude is None
+    assert station.station_name == "서울역"
+    assert station.raw["역 위치(경도)"] == str(longitude)
+    assert station.raw["역 위치(위도)"] == str(latitude)
+
+
+@pytest.mark.parametrize("longitude,latitude", [(180, 90), (-180, -90), (0, 0)])
+def test_public_station_file_coordinate_boundaries(longitude, latitude):
+    from kric.files import parse_nationwide_station_info_row
+
+    row = dict(parse_xlsx_table(_station_info_workbook_bytes()).rows[0])
+    row["역 위치(경도)"] = str(longitude)
+    row["역 위치(위도)"] = str(latitude)
+    station = parse_nationwide_station_info_row(row)
+    assert (station.longitude, station.latitude) == (longitude, latitude)
+
+
 @respx.mock
 async def test_public_file_download_requires_no_service_key_and_parses_station_dataset():
     route = respx.get(FILE_DOWNLOAD_URL).mock(

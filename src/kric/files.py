@@ -408,6 +408,12 @@ def parse_nationwide_station_info_row(row: Mapping[str, Any]) -> FileStationInfo
     """dataset 1294의 한 행을 파싱한다. 명세 밖 열도 raw에 보존한다."""
     raw = as_raw_mapping(row)
     require_fields(raw, "station-info file row", *_STATION_INFO_REQUIRED_HEADERS)
+    longitude = float_or_none(row.get("역 위치(경도)"), "역 위치(경도)")
+    latitude = float_or_none(row.get("역 위치(위도)"), "역 위치(위도)")
+    # 원본의 축 오류를 임의 교환하지 않는다. 지도용 값만 비우고 raw는 보존한다.
+    if ((longitude is not None and not -180 <= longitude <= 180)
+            or (latitude is not None and not -90 <= latitude <= 90)):
+        longitude = latitude = None
     return FileStationInfo(
         rail_operator_name=raw.get("철도운영기관명"),
         operating_line_name=raw.get("운영노선"),
@@ -420,8 +426,8 @@ def parse_nationwide_station_info_row(row: Mapping[str, Any]) -> FileStationInfo
         simplified_chinese_name=raw.get("역명(중국어간체)"),
         traditional_chinese_name=raw.get("역명(중국어번체)"),
         sub_station_name=raw.get("역명(부역명)"),
-        longitude=float_or_none(row.get("역 위치(경도)"), "역 위치(경도)"),
-        latitude=float_or_none(row.get("역 위치(위도)"), "역 위치(위도)"),
+        longitude=longitude,
+        latitude=latitude,
         lot_address=raw.get("역 주소(지번주소)"),
         road_address=raw.get("역 주소(도로명 주소)"),
         station_phone_number=raw.get("역사 전화번호"),

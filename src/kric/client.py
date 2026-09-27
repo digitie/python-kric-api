@@ -183,11 +183,24 @@ def _timetable_params(
 
 
 def _raise_for_error_envelope(payload: Mapping[str, Any]) -> None:
+    if isinstance(payload.get("body"), list):
+        header = payload.get("header")
+        if not isinstance(header, Mapping) or "resultCode" not in header:
+            raise KricServerError("KRIC array response requires a header with resultCode")
+    if "header" not in payload:
+        return
     header = payload.get("header")
     if not isinstance(header, Mapping):
+        raise KricServerError("KRIC response header must be an object")
+    if "resultCode" not in header:
         return
-    code = str(header.get("resultCode") or "").strip()
-    if not code or code in {"00", "0", "200"}:
+    raw_code = header["resultCode"]
+    if isinstance(raw_code, bool) or not isinstance(raw_code, (str, int)):
+        raise KricServerError("KRIC resultCode must be a non-blank string or integer")
+    code = str(raw_code).strip()
+    if not code:
+        raise KricServerError("KRIC resultCode must not be blank")
+    if code in {"00", "0", "200"}:
         return
     message = str(header.get("resultMsg") or "KRIC API returned an error")
     normalized = message.lower()
