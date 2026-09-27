@@ -95,6 +95,13 @@ async with DataGoKrMaritimeClient(os.environ["DATA_GO_KR_SERVICE_KEY"]) as clien
 - `get_domestic_ship_operations()` → `GetShipOpratInfoList`
 - `get_ferry_terminals()` → `GetPsnshipTrminlList`
 - `get_ferry_ship_types()` → `GetShipKndList`
+
+터미널 `GetPsnshipTrminlList`과 선박종류 `GetShipKndList`은 실제 성공 응답에서
+`totalCount`·페이지 메타데이터 없이 전체 목록을 제공한다(2026-09-28 각 27/7행 확인).
+이 두 operation의 명시적 정상 응답만 첫 호출로 끝내며, 항구 목록의 count 누락,
+명시적 null, 페이지 메타데이터가 남은 count 누락, 중간 페이지의 count 소실은 오류다.
+빈 목록도 count 없이 정상으로 추정하지 않는다. `totalCount`가 있으면 기존 페이지
+예산·누적 행 수·식별자 중복 검증을 그대로 적용한다.
 - `get_coastal_ferry_schedules()` → 한국해양교통안전공단 `운항 스케줄 정보`의
   `get-oprt-schd-info-v2`
 

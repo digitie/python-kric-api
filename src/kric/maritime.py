@@ -202,7 +202,7 @@ class DataGoKrMaritimeClient:
         )
         return (
             tuple(_parse_terminal(row) for row in _extract_items_or_empty(payload, allow_empty_with_total=True)),
-            _total_count(payload),
+            _total_count(payload, allow_unpaged=True),
         )
 
     async def _get_ship_types_page(self, *, page_no: int, num_of_rows: int) -> tuple[tuple[FerryShipType, ...], int | None]:
@@ -211,7 +211,7 @@ class DataGoKrMaritimeClient:
         )
         return (
             tuple(_parse_ship_type(row) for row in _extract_items_or_empty(payload, allow_empty_with_total=True)),
-            _total_count(payload),
+            _total_count(payload, allow_unpaged=True),
         )
 
     async def _iterate_pages(
@@ -359,7 +359,7 @@ def _empty_or_invalid(body: Mapping[str, Any], *, allow_empty_with_total: bool =
     return ()
 
 
-def _total_count(payload: Mapping[str, Any]) -> int | None:
+def _total_count(payload: Mapping[str, Any], *, allow_unpaged: bool = False) -> int | None:
     root = payload.get("response")
     envelope = root if isinstance(root, Mapping) else payload
     body = envelope.get("body") if isinstance(envelope, Mapping) else None
@@ -367,7 +367,19 @@ def _total_count(payload: Mapping[str, Any]) -> int | None:
         raise KricServerError("data.go.kr maritime response does not contain a body object")
     value = body.get("totalCount")
     if value is None:
-        return None
+        # 실제 터미널/선박종류 응답만 비페이지 목록이다. 항구 목록이나 페이지 정보가
+        # 있는 응답의 count 누락을 전량 성공으로 추정하지 않는다. 명시적 null도 오류다.
+        header = envelope.get("header")
+        if (
+            allow_unpaged
+            and "totalCount" not in body
+            and "pageNo" not in body
+            and "numOfRows" not in body
+            and isinstance(header, Mapping)
+            and str(header.get("resultCode")) in {"00", "0", "200", "NORMAL_SERVICE"}
+        ):
+            return None
+        raise KricServerError("data.go.kr maritime response does not contain totalCount")
     try:
         total = int(str(value))
     except (TypeError, ValueError) as exc:
