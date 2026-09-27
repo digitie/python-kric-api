@@ -65,7 +65,23 @@ def require_fields(raw: Mapping[str, str | None], record_name: str, *fields: str
 
 
 def extract_items(payload: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
-    """KRIC의 일반적인 JSON envelope에서 item 하나 또는 목록을 꺼낸다."""
+    """실제 KRIC body 배열과 기존 item envelope를 검증해 꺼낸다."""
+    body = payload.get("body")
+    if isinstance(body, list):
+        if not all(isinstance(row, Mapping) for row in body):
+            raise KricServerError("KRIC response body must contain only objects")
+        header = payload.get("header")
+        count = header.get("resultCnt") if isinstance(header, Mapping) else None
+        if count is not None:
+            # bool/소수/음수는 정상 행 수가 아니다. 숫자 문자열은 선행 0도 허용한다.
+            if isinstance(count, bool) or not isinstance(count, (int, str)):
+                raise KricServerError("KRIC resultCnt must be a non-negative integer")
+            text = str(count)
+            if not text.isascii() or not text.isdecimal():
+                raise KricServerError("KRIC resultCnt must be a non-negative integer")
+            if int(text) != len(body):
+                raise KricServerError("KRIC resultCnt does not match response body length")
+        return tuple(body)
     candidates: list[Any] = [payload]
     for key in ("response", "body", "items"):
         candidates.extend(
