@@ -36,7 +36,15 @@ async def main():
             station_code="150",
             day_code=ServiceDayCode.WEEKDAY,
         )
-        print(station[0].station_name, timetable[0].departure_time)
+        target = next((row for row in station if
+            (row.rail_operator_code, row.line_code, row.station_code) == ("S1", "1", "150")
+        ), None)
+        departures = [row for row in timetable if
+            (row.rail_operator_code, row.line_code, row.station_code) == ("S1", "1", "150")]
+        if target is not None and departures:
+            print(target.station_name, departures[0].departure_time)
+        else:
+            print("요청한 역 또는 시간표가 제공되지 않았습니다.")
 
 
 asyncio.run(main())

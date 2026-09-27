@@ -79,7 +79,7 @@ def extract_items(payload: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
             text = str(count)
             if not text.isascii() or not text.isdecimal():
                 raise KricServerError("KRIC resultCnt must be a non-negative integer")
-            if int(text) != len(body):
+            if (text.lstrip("0") or "0") != str(len(body)):
                 raise KricServerError("KRIC resultCnt does not match response body length")
         return tuple(body)
     candidates: list[Any] = [payload]

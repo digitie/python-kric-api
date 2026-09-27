@@ -62,3 +62,31 @@ def test_invalid_body_is_not_empty_success(body):
 def test_success_array_without_optional_count_and_legacy_item_remain_supported():
     assert extract_items({"body": [{"code": "001"}]}) == ({"code": "001"},)
     assert extract_items({"body": {"items": {"item": []}}}) == ()
+
+
+def test_count_does_not_depend_on_python_integer_conversion_limit():
+    assert extract_items({"header": {"resultCnt": "0" * 5000}, "body": []}) == ()
+    with pytest.raises(KricServerError):
+        extract_items({"header": {"resultCnt": "9" * 5000}, "body": []})
+
+
+@respx.mock
+@pytest.mark.parametrize("header", [None, [], "bad", {}, {"resultCnt": 0, "resultMsg": "server error"}, [{"resultCode": "99"}],
+    {"resultCode": False}, {"resultCode": True}, {"resultCode": []},
+    {"resultCode": None}, {"resultCode": {}}, {"resultCode": 0.0},
+    {"resultCode": ""}, {"resultCode": " "}])
+async def test_malformed_error_header_cannot_be_saved_as_empty_success(header):
+    respx.get("https://openapi.kric.go.kr/openapi/convenientInfo/stationInfo").respond(
+        json={"header": header, "body": []},
+    )
+    async with KricClient("test-key") as client:
+        with pytest.raises(KricServerError):
+            await client.get_station_info(station_code="312")
+
+
+@respx.mock
+async def test_array_without_status_header_is_not_success():
+    respx.get("https://openapi.kric.go.kr/openapi/convenientInfo/stationInfo").respond(json={"body": []})
+    async with KricClient("test-key") as client:
+        with pytest.raises(KricServerError):
+            await client.get_station_info(station_code="312")
