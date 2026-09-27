@@ -1,5 +1,8 @@
 # python-kric-api
 
+공개 역사 파일의 범위를 벗어난 위경도는 두 좌표를 `None`으로 반환하고 `raw`의
+원본 값을 보존합니다. 축을 임의로 바꾸거나 역 전체를 누락하지 않습니다.
+
 KRIC(철도산업정보센터) Open API와 공개 파일 데이터의 역 위치, 도시철도 노선 구성, 운행
 시간표와 역 편의시설을 파싱하는 비동기 Python client입니다. 주기 수집·PostgreSQL 저장·즉시 조회 API·통계는
 `kor-travel-transport`가 담당하며, 이 패키지는 provider 응답 계약을 보존합니다.
