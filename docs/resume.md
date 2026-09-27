@@ -20,6 +20,8 @@
   기반의 idempotent object key를 반환한다. HTTPS endpoint가 기본이며, 검증한 XLSX만 `.xlsx`
   객체로 보관한다. store는 async context manager로 연결 풀을 닫는다.
 - 여객선 기준정보는 명시적 호출 상한을 가진 비동기 pagination iterator로 전량을 읽는다.
+  실제 확인된 비페이지 터미널·선박종류 응답만 `totalCount` 없이 허용한다. 항구 목록의 count
+  누락은 오류로 유지하며, 페이지 메타데이터가 남은 불완전한 응답도 거부한다.
   운항 시간표·계획 운항은 quota를 예측할 수 없으므로 요청한 한 페이지만 반환한다.
 - 노선·열차별 시간표·역 편의시설 세부 필드의 실제 성공 응답은 아직 별도 검증 대상이다.
 
