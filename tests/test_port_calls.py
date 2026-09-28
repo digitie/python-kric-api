@@ -62,9 +62,32 @@ async def test_required_filters_fail_before_network(name, province):
             await client.get_port_calls(name=name, province=province)
 
 
-@pytest.mark.parametrize("field", ["portcl_cd", "portcl_nm", "admdst_ctpv_cd", "admdst_ctpv_nm", "lat", "lot"])
+@pytest.mark.parametrize("field", ["portcl_cd", "portcl_nm"])
 async def test_missing_schema_is_not_empty(field):
     row = dict(ROW)
     del row[field]
     with pytest.raises(KricServerError):
         await query(envelope(row))
+
+
+@pytest.mark.parametrize("field", ["admdst_ctpv_cd", "admdst_ctpv_nm", "lat", "lot"])
+async def test_optional_fields_may_be_absent(field):
+    row = dict(ROW)
+    del row[field]
+    item, = await query(envelope(row))
+    assert item.port_code == "D000"
+    if field in {"lat", "lot"}:
+        assert (item.latitude, item.longitude) == (None, None)
+
+
+@pytest.mark.parametrize("value", [{}, [], False, 123])
+@pytest.mark.parametrize("field", ["portcl_cd", "portcl_nm", "admdst_ctpv_cd", "admdst_ctpv_nm"])
+async def test_identity_types_are_validated_before_stringification(field, value):
+    with pytest.raises(KricServerError, match="must be text"):
+        await query(envelope({**ROW, field: value}))
+
+
+@pytest.mark.parametrize("header", [None, {}, {"resultCode": False}, {"resultCode": ""}, {"resultCode": []}, {"resultCode": "00"}])
+async def test_missing_or_wrong_success_status_is_not_empty(header):
+    with pytest.raises(KricServerError):
+        await query({"header": header, "body": {"items": [], "totalCount": 0}})

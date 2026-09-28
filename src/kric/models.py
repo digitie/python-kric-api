@@ -220,8 +220,8 @@ class PortCall:
 
     port_code: str
     port_name: str
-    province_code: str
-    province_name: str
+    province_code: str | None
+    province_name: str | None
     district_name: str | None
     latitude: float | None
     longitude: float | None

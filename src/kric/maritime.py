@@ -167,14 +167,14 @@ class DataGoKrMaritimeClient:
         params = _page_params(1, 100)
         params.update({"portclNm": _required_text(name, "name"),
                        "admdstCtpvNm": _required_text(province, "province")})
-        payload = await self._get(PORT_CALL_BASE_URL, "get-port-call-info-v2", params, response_type="dataType")
+        payload = await self._get(PORT_CALL_BASE_URL, "get-port-call-info-v2", params, response_type="dataType", strict_status=True)
         rows = _extract_items_or_empty(payload)
         if _total_count(payload) != len(rows):
             raise KricServerError("KOMSA port call response is incomplete")
         return tuple(_parse_port_call(row) for row in rows)
 
     async def _get(
-        self, base_url: str, operation: str, params: Mapping[str, str], *, response_type: str
+        self, base_url: str, operation: str, params: Mapping[str, str], *, response_type: str, strict_status: bool = False
     ) -> Mapping[str, Any]:
         request_params = {"serviceKey": self.service_key, response_type: "JSON", **params}
         try:
@@ -197,8 +197,17 @@ class DataGoKrMaritimeClient:
             raise KricServerError("data.go.kr maritime response is not JSON") from exc
         if not isinstance(payload, Mapping):
             raise KricServerError("data.go.kr maritime JSON response must be an object")
+        status_code = None
+        if strict_status:
+            root = payload.get("response", payload)
+            header = root.get("header") if isinstance(root, Mapping) else None
+            status_code = header.get("resultCode") if isinstance(header, Mapping) else None
+            if isinstance(status_code, bool) or not isinstance(status_code, (str, int)) or not str(status_code).strip():
+                raise KricServerError("KOMSA port call response has no valid resultCode")
         if _raise_for_error_envelope(payload):
             return {"body": {"items": [], "totalCount": 0}}
+        if strict_status and str(status_code).strip() != "200":
+            raise KricServerError("KOMSA port call response has no explicit success status")
         return payload
 
     async def _get_ports_page(
@@ -413,13 +422,11 @@ def _parse_port(row: Mapping[str, Any]) -> DomesticFerryPort:
 
 
 def _parse_port_call(row: Mapping[str, Any]) -> PortCall:
+    for name in ("portcl_cd", "portcl_nm", "admdst_ctpv_cd", "admdst_ctpv_nm", "admdst_sgg_nm"):
+        if row.get(name) is not None and not isinstance(row[name], str):
+            raise KricServerError(f"KOMSA port call {name} must be text")
     raw = as_raw_mapping(row)
-    require_fields(raw, "get-port-call-info-v2 item", "portcl_cd", "portcl_nm", "admdst_ctpv_cd", "admdst_ctpv_nm")
-    if "lat" not in raw or "lot" not in raw:
-        raise KricServerError("KOMSA port call coordinate fields are missing")
-    fields = [raw.get(name) for name in ("portcl_cd", "portcl_nm", "admdst_ctpv_cd", "admdst_ctpv_nm")]
-    if not all(fields):
-        raise KricServerError("KOMSA port call identity is blank")
+    require_fields(raw, "get-port-call-info-v2 item", "portcl_cd", "portcl_nm")
     latitude = longitude = None
     try:
         lat, lon = float(raw.get("lat") or ""), float(raw.get("lot") or "")
@@ -427,8 +434,8 @@ def _parse_port_call(row: Mapping[str, Any]) -> PortCall:
             latitude, longitude = lat, lon
     except ValueError:
         pass
-    return PortCall(port_code=fields[0] or "", port_name=fields[1] or "",
-                    province_code=fields[2] or "", province_name=fields[3] or "",
+    return PortCall(port_code=raw["portcl_cd"] or "", port_name=raw["portcl_nm"] or "",
+                    province_code=raw.get("admdst_ctpv_cd"), province_name=raw.get("admdst_ctpv_nm"),
                     district_name=raw.get("admdst_sgg_nm"), latitude=latitude, longitude=longitude, raw=raw)
 
 
