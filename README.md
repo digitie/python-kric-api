@@ -1,5 +1,9 @@
 # python-kric-api
 
+KOMSA 기항지 위치는 `await DataGoKrMaritimeClient(key).get_port_calls(name="인천", province="인천광역시")`로
+조회한다. 실제 사용에서는 `async with`로 client를 닫는다. TAGO 코드와 기항지 코드를 혼용하지
+않으며, 일일 호출 예산·캐시는 소비자가 관리한다. 상세 계약은 [구현 계획](docs/implementation-plan.md)을 따른다.
+
 공개 역사 파일의 범위를 벗어난 위경도는 두 좌표를 `None`으로 반환하고 `raw`의
 원본 값을 보존합니다. 축을 임의로 바꾸거나 역 전체를 누락하지 않습니다.
 

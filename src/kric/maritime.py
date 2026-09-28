@@ -22,11 +22,13 @@ from .models import (
     DomesticShipOperation,
     FerryShipType,
     FerryTerminal,
+    PortCall,
 )
 from .parse import as_raw_mapping, require_fields
 
 DOMESTIC_SHIP_BASE_URL = "https://apis.data.go.kr/1613000/DmstcShipNvgInfo"
 COASTAL_SCHEDULE_BASE_URL = "https://apis.data.go.kr/B554035/oprt-schd-info-v2"
+PORT_CALL_BASE_URL = "https://apis.data.go.kr/B554035/port-call-info-v2"
 T = TypeVar("T")
 
 
@@ -155,6 +157,21 @@ class DataGoKrMaritimeClient:
             COASTAL_SCHEDULE_BASE_URL, "get-oprt-schd-info-v2", params, response_type="dataType"
         )
         return tuple(_parse_coastal_schedule(row) for row in _extract_items_or_empty(payload))
+
+    async def get_port_calls(self, *, name: str, province: str) -> tuple[PortCall, ...]:
+        """이름·시도로 기항지를 조회한다. 잘린 응답은 유일한 결과로 오인하지 않는다.
+
+        개발계정 안내 한도는 하루 100회다. 재시도·페이지 자동 순회 없이 한 번만
+        요청하며, 소비자는 정기 배치에서 캐시하고 동명 기항지를 구분해야 한다.
+        """
+        params = _page_params(1, 100)
+        params.update({"portclNm": _required_text(name, "name"),
+                       "admdstCtpvNm": _required_text(province, "province")})
+        payload = await self._get(PORT_CALL_BASE_URL, "get-port-call-info-v2", params, response_type="dataType")
+        rows = _extract_items_or_empty(payload)
+        if _total_count(payload) != len(rows):
+            raise KricServerError("KOMSA port call response is incomplete")
+        return tuple(_parse_port_call(row) for row in rows)
 
     async def _get(
         self, base_url: str, operation: str, params: Mapping[str, str], *, response_type: str
@@ -393,6 +410,26 @@ def _parse_port(row: Mapping[str, Any]) -> DomesticFerryPort:
     raw = as_raw_mapping(row)
     require_fields(raw, "GetPortList item", "nodeId", "nodeNm")
     return DomesticFerryPort(port_id=raw.get("nodeId"), port_name=raw.get("nodeNm"), raw=raw)
+
+
+def _parse_port_call(row: Mapping[str, Any]) -> PortCall:
+    raw = as_raw_mapping(row)
+    require_fields(raw, "get-port-call-info-v2 item", "portcl_cd", "portcl_nm", "admdst_ctpv_cd", "admdst_ctpv_nm")
+    if "lat" not in raw or "lot" not in raw:
+        raise KricServerError("KOMSA port call coordinate fields are missing")
+    fields = [raw.get(name) for name in ("portcl_cd", "portcl_nm", "admdst_ctpv_cd", "admdst_ctpv_nm")]
+    if not all(fields):
+        raise KricServerError("KOMSA port call identity is blank")
+    latitude = longitude = None
+    try:
+        lat, lon = float(raw.get("lat") or ""), float(raw.get("lot") or "")
+        if math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180:
+            latitude, longitude = lat, lon
+    except ValueError:
+        pass
+    return PortCall(port_code=fields[0] or "", port_name=fields[1] or "",
+                    province_code=fields[2] or "", province_name=fields[3] or "",
+                    district_name=raw.get("admdst_sgg_nm"), latitude=latitude, longitude=longitude, raw=raw)
 
 
 def _parse_terminal(row: Mapping[str, Any]) -> FerryTerminal:

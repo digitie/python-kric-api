@@ -215,6 +215,23 @@ class PortGuidelineLocation:
 
 
 @dataclass(frozen=True, slots=True)
+class PortCall:
+    """KOMSA 기항지. TAGO 항구 코드와 별개인 코드·행정구역을 보존한다."""
+
+    port_code: str
+    port_name: str
+    province_code: str
+    province_name: str
+    district_name: str | None
+    latitude: float | None
+    longitude: float | None
+    raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "raw", _freeze_raw(self.raw))
+
+
+@dataclass(frozen=True, slots=True)
 class FerryTerminal:
     """TAGO 여객선 터미널 기준정보."""
 

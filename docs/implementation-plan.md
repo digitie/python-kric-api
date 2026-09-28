@@ -72,6 +72,21 @@ KRIC의 신청 절차는 [Open API 이용 절차](https://data.kric.go.kr/rips/s
 
 ## 공공데이터포털 여객선 provider
 
+### KOMSA 기항지 위치 (`15142297`)
+
+- 공식 설명: <https://www.data.go.kr/data/15142297/openapi.do>
+- `DataGoKrMaritimeClient.get_port_calls(name=..., province=...)`는
+  `port-call-info-v2/get-port-call-info-v2`에 필수 이름·시도와 JSON 형식을 전달한다.
+- `PortCall`은 `portcl_cd`, `portcl_nm`, 시도 코드/이름, 시군구 이름, `lat`/`lot`을 보존한다.
+  TAGO `nodeId`와 같은 코드라고 간주하지 않는다. 동명 기항지 선택은 소비자의 책임이다.
+- 1회 최대 100행을 요청한다. `totalCount`와 행 수가 다르면 잘린 검색을 유일한 결과로
+  오인하지 않도록 실패한다. 자동 재시도·무제한 페이지 순회는 없다.
+- null·범위 밖·비유한 좌표는 두 지도용 값을 모두 비우고 원문은 보존한다. 필드 자체가
+  빠진 응답은 스키마 오류다. `153`은 정상 빈 결과, `117`은 호출 제한 오류다.
+- 개발계정 안내는 하루 100회다. 소비 서비스가 정기 배치·캐시·실패 포함 예산을 관리한다.
+  사용자 승인 후 인천/인천광역시 최소 1회 호출에서 HTTP 200, `D000`, 위도 37.4557,
+  경도 126.598을 확인했다. 키·인증 URL은 문서나 fixture에 남기지 않는다.
+
 무인증 파일 `15121268` 해양수산부 항만가이드라인 위치는 항구명·WGS84 위도/경도와 원시
 순서/선수방위를 제공한다. `PortGuidelineFileClient`가 고정 다운로드 URL만 호출하고 redirect와
 형식 오류를 거부한다. 1회성에 가까운 파일이므로 소비자는 3일 기준정보 job에서 RustFS에
