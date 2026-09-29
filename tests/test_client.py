@@ -307,9 +307,24 @@ def test_only_verified_maglev_rows_correct_swapped_axes(number, name, longitude,
     assert (parsed.longitude, parsed.latitude) == (latitude, longitude)
     for field, value in [("철도운영기관명", "다른 기관"), ("운영노선", "다른 노선"),
                          ("역 번호", "001"), ("역명(한글)", "다른 역"),
-                         ("역 위치(경도)", str(longitude + 0.000001))]:
+                         ("역 위치(경도)", str(longitude + 0.000001)),
+                         ("역 위치(위도)", str(latitude + 0.000001))]:
         other = parse_nationwide_station_info_row({**row, field: value})
         assert other.longitude is None and other.latitude is None
+
+    # 실제 XLSX 숫자 셀 → 문자열 원문 → typed 모델 경로에서도 같은 계약을 지킨다.
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(list(row))
+    sheet.append(["인천공항", "자기부상", int(number), name, longitude, latitude])
+    sheet.append(["인천공항", "자기부상", int(number), name, latitude, longitude])
+    output = BytesIO()
+    workbook.save(output)
+    swapped, already_correct = parse_nationwide_station_info_xlsx(output.getvalue())
+    assert (swapped.longitude, swapped.latitude) == (latitude, longitude)
+    assert dict(swapped.raw) == row
+    assert (already_correct.longitude, already_correct.latitude) == (latitude, longitude)
+    assert dict(already_correct.raw) == corrected
 
 
 @respx.mock
