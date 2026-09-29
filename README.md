@@ -6,6 +6,8 @@ KOMSA 기항지 위치는 `await DataGoKrMaritimeClient(key).get_port_calls(name
 
 공개 역사 파일의 범위를 벗어난 위경도는 두 좌표를 `None`으로 반환하고 `raw`의
 원본 값을 보존합니다. 축을 임의로 바꾸거나 역 전체를 누락하지 않습니다.
+다만 공식 공개 파일에서 확인한 [자기부상 6역의 축 오류](docs/maglev-coordinate-correction.md)는
+기관·노선·역·좌표쌍이 정확히 일치할 때 typed 좌표만 보정합니다.
 
 KRIC(철도산업정보센터) Open API와 공개 파일 데이터의 역 위치, 도시철도 노선 구성, 운행
 시간표와 역 편의시설을 파싱하는 비동기 Python client입니다. 주기 수집·PostgreSQL 저장·즉시 조회 API·통계는

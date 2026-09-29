@@ -54,6 +54,18 @@ _STATION_CODE_REQUIRED_HEADERS = (
 )
 _ZERO_PADDED_NUMBER_FORMAT = re.compile(r"(?P<prefix>(?:\\.)*)(?P<zeros>0+)$")
 
+# dataset 1294의 20260701 원본에서 확인한 자기부상 6행만 보정한다.
+# 기관·노선·역 번호·이름·원시 좌표가 모두 일치해야 하며 raw는 변경하지 않는다.
+# 근거와 원본 해시는 docs/maglev-coordinate-correction.md에 보존한다.
+_MAGLEV_SWAPPED_COORDINATES = {
+    ("101", "인천공항1터미널"): (37.447222, 126.4525),
+    ("102", "장기주차장"): (37.44385, 126.455671),
+    ("103", "합동청사"): (37.440519, 126.458654),
+    ("104", "파라다이스시티"): (37.437217, 126.459858),
+    ("105", "워터파크"): (37.429227, 126.434183),
+    ("106", "용유"): (37.424805, 126.423637),
+}
+
 
 class KricFileClient:
     """KRIC 공개 파일 client. 인증키·Open API 요청을 사용하지 않는다."""
@@ -410,7 +422,11 @@ def parse_nationwide_station_info_row(row: Mapping[str, Any]) -> FileStationInfo
     require_fields(raw, "station-info file row", *_STATION_INFO_REQUIRED_HEADERS)
     longitude = float_or_none(row.get("역 위치(경도)"), "역 위치(경도)")
     latitude = float_or_none(row.get("역 위치(위도)"), "역 위치(위도)")
-    # 원본의 축 오류를 임의 교환하지 않는다. 지도용 값만 비우고 raw는 보존한다.
+    known_swapped = _MAGLEV_SWAPPED_COORDINATES.get((raw.get("역 번호") or "", raw.get("역명(한글)") or ""))
+    if (raw.get("철도운영기관명") == "인천공항" and raw.get("운영노선") == "자기부상"
+            and known_swapped is not None and (longitude, latitude) == known_swapped):
+        longitude, latitude = latitude, longitude
+    # 검증된 6행 외의 축 오류는 추정 교환하지 않는다.
     if ((longitude is not None and not -180 <= longitude <= 180)
             or (latitude is not None and not -90 <= latitude <= 90)):
         longitude = latitude = None

@@ -1,5 +1,11 @@
 # 현재 상태
 
+- 2026-09-29 `codex/maglev-file-coordinates`: 원본 6역만 제한적으로 축 보정했다.
+  [근거·보정 범위](maglev-coordinate-correction.md). WSL 169개 통과·live 2개 제외,
+  커버리지 91.52%, mypy/compileall 통과. `07d91ca` CI·James/Popper 독립 리뷰 P0/P1 없음.
+  공개 파일 opt-in live 1개 통과. P2 위도 단독 변형·XLSX 숫자 셀 테스트를 보강했다.
+  소비자 pin은 반영했지만 운영 배포/지도 검증과 머지는 미완료다.
+
 - 2026-09-28 KOMSA 기항지 API `15142297`의 `get_port_calls(name, province)`를 추가했다.
   기항지 코드·행정구역·위경도를 보존하고, 누락된 필드·잘린 페이지는 실패로 구분한다.
   WSL 테스트 163개 통과·live opt-in 2개 제외, 커버리지 91.49%, mypy 통과다.
