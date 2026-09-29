@@ -285,6 +285,33 @@ def test_public_station_file_coordinate_boundaries(longitude, latitude):
     assert (station.longitude, station.latitude) == (longitude, latitude)
 
 
+@pytest.mark.parametrize("number,name,longitude,latitude", [
+    ("101", "인천공항1터미널", 37.447222, 126.4525),
+    ("102", "장기주차장", 37.44385, 126.455671),
+    ("103", "합동청사", 37.440519, 126.458654),
+    ("104", "파라다이스시티", 37.437217, 126.459858),
+    ("105", "워터파크", 37.429227, 126.434183),
+    ("106", "용유", 37.424805, 126.423637),
+])
+def test_only_verified_maglev_rows_correct_swapped_axes(number, name, longitude, latitude):
+    from kric.files import parse_nationwide_station_info_row
+
+    row = {"철도운영기관명": "인천공항", "운영노선": "자기부상", "역 번호": number,
+        "역명(한글)": name, "역 위치(경도)": str(longitude), "역 위치(위도)": str(latitude)}
+    station = parse_nationwide_station_info_row(row)
+    assert (station.longitude, station.latitude) == (latitude, longitude)
+    assert dict(station.raw) == row
+    # 제공자가 정정한 좌표를 다시 뒤집거나, 비슷한 다른 역을 보정하면 안 된다.
+    corrected = {**row, "역 위치(경도)": str(latitude), "역 위치(위도)": str(longitude)}
+    parsed = parse_nationwide_station_info_row(corrected)
+    assert (parsed.longitude, parsed.latitude) == (latitude, longitude)
+    for field, value in [("철도운영기관명", "다른 기관"), ("운영노선", "다른 노선"),
+                         ("역 번호", "001"), ("역명(한글)", "다른 역"),
+                         ("역 위치(경도)", str(longitude + 0.000001))]:
+        other = parse_nationwide_station_info_row({**row, field: value})
+        assert other.longitude is None and other.latitude is None
+
+
 @respx.mock
 async def test_public_file_download_requires_no_service_key_and_parses_station_dataset():
     route = respx.get(FILE_DOWNLOAD_URL).mock(

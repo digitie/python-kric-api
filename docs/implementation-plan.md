@@ -30,6 +30,8 @@
 경도·위도 열만 `float`으로 해석하고, API의 `mapCordX`/`mapCordY`와 결합하지 않는다.
 경도 ±180/위도 ±90을 벗어나면 두 typed 좌표를 `None`으로 반환하고 원문은 보존한다.
 원본의 축 뒤바뀜이 의심돼도 근거 없이 교환하지 않는다.
+예외는 원본과 공식 노선 안내를 대조한 [자기부상 6행](maglev-coordinate-correction.md)뿐이다.
+기관·노선·역 식별자·좌표쌍이 모두 일치할 때 typed 값만 교환하고 raw를 보존한다.
 공개 XLSX는 다운로드 10 MiB, 압축 해제 64 MiB, 첫 worksheet 100,000행·256열 기본 상한을
 적용한다. Excel의 0 패딩 및 이스케이프 접두사 번호 표시 형식은 문자열로 보존한다.
 소비 서비스가 공용 RustFS 보관을 요청하면 `download_dataset_to_rustfs()`가 형식을 단정하지
