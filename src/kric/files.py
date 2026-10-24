@@ -416,6 +416,19 @@ def parse_xlsx_table(
         workbook.close()
 
 
+def parse_station_file_facilities(row: Mapping[str, Any]) -> tuple[str, ...]:
+    """dataset 1294에 명시된 긍정 값만 시설명으로 제공한다. 미기재를 부재로 해석하지 않는다."""
+    fields = (
+        ("환승역 여부", "환승 가능", "가능"),
+        ("유실물 취급여부", "유실물 취급", "있음"),
+        ("안전발판 유무", "안전발판", "있음"),
+        ("스크린도어 설치유무", "스크린도어", "있음"),
+        ("승강장 연결여부", "승강장 연결", "있음"),
+    )
+    return tuple(label for key, label, positive in fields
+        if isinstance(value := row.get(key), str) and value.strip() == positive)
+
+
 def parse_nationwide_station_info_row(row: Mapping[str, Any]) -> FileStationInfo:
     """dataset 1294의 한 행을 파싱한다. 명세 밖 열도 raw에 보존한다."""
     raw = as_raw_mapping(row)
@@ -448,6 +461,7 @@ def parse_nationwide_station_info_row(row: Mapping[str, Any]) -> FileStationInfo
         road_address=raw.get("역 주소(도로명 주소)"),
         station_phone_number=raw.get("역사 전화번호"),
         data_reference_date=raw.get("데이터 기준일자"),
+        facilities=parse_station_file_facilities(raw),
         raw=raw,
     )
 

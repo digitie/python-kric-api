@@ -142,6 +142,7 @@ class FileStationInfo:
     station_phone_number: str | None
     data_reference_date: str | None
     raw: Mapping[str, str | None] = field(default_factory=dict, repr=False)
+    facilities: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "raw", _freeze_raw(self.raw))

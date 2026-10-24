@@ -215,3 +215,10 @@ DATA_GO_KR_LIVE_MARITIME=1 DATA_GO_KR_SERVICE_KEY="..." \
 ```
 
 신청 대상과 구현 순서는 [docs/implementation-plan.md](docs/implementation-plan.md)를 참고하세요.
+
+## 공개 역사 파일의 편의시설
+
+`FileStationInfo.facilities`와 `parse_station_file_facilities(raw)`는 dataset `1294`의
+환승·유실물 취급·안전발판·스크린도어·승강장 연결 중 환승은 `가능`, 나머지 시설은 `있음`인 값을
+시설명으로 제공합니다. 미기재·알 수 없는 값·부정 값은 시설이 있다고 표시하지 않으며,
+원문은 `raw`에 그대로 남습니다. 이 목록이 비어 있어도 해당 역에 시설이 없다는 뜻은 아닙니다.
