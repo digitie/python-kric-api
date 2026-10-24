@@ -9,6 +9,7 @@ from .files import (
     parse_xlsx_table,
     parse_nationwide_station_info_xlsx,
     parse_station_code_xlsx,
+    parse_station_file_facilities,
 )
 from .maritime import DataGoKrMaritimeClient
 from .port_guidelines import PORT_GUIDELINE_SOURCE_ID, PortGuidelineFileClient, parse_port_guideline_locations
@@ -75,6 +76,7 @@ __all__ = [
     "parse_port_guideline_locations",
     "parse_nationwide_station_info_xlsx",
     "parse_station_code_xlsx",
+    "parse_station_file_facilities",
     "parse_xlsx_table",
     "StationFacility",
     "StationInfo",
