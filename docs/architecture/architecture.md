@@ -1,6 +1,7 @@
 # 구조
 
-이 저장소는 KRIC provider 라이브러리만 제공한다. 공개 API 요청과 파일 자료의 원시 응답을
+이 저장소는 KRIC 중심의 철도 자료와 기존 해양 교통 provider 라이브러리를 제공한다.
+코레일 공개 역 안내는 `KorailPublicClient`로 분리하고 [계약](../korail-public-station-guide.md)을 따른다. 공개 API 요청과 파일 자료의 원시 응답을
 검증·파싱해 typed model로 만들고, 소비 서비스가 이를 저장·분석하도록 한다.
 
 ```text

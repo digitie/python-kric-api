@@ -1,6 +1,10 @@
 """KRIC Open API의 역·노선·시간표·편의시설 client를 제공한다."""
 
 from .client import KricClient
+from .korail_public import (
+    KorailPublicClient, KorailPublicStation, KorailGuideCategory, KorailStationGuide, KorailGuidePage,
+    parse_korail_public_stations, parse_korail_guide_page,
+)
 from .files import (
     NATIONWIDE_STATION_INFO_DATASET_ID,
     STATION_CODE_FILE_ID,
@@ -44,6 +48,13 @@ from .models import (
 )
 
 __all__ = [
+    "parse_korail_guide_page",
+    "parse_korail_public_stations",
+    "KorailGuidePage",
+    "KorailStationGuide",
+    "KorailGuideCategory",
+    "KorailPublicStation",
+    "KorailPublicClient",
     "KricAuthError",
     "KricClient",
     "DataGoKrMaritimeClient",
