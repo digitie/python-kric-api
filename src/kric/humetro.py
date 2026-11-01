@@ -14,7 +14,7 @@ from .exceptions import KricAuthError, KricInvalidParameterError, KricNetworkErr
 HUMETRO_TIMETABLE_URL = "https://data.humetro.busan.kr/homepage/default/stationtime/page/view.do?menu_no=10010103"
 HUMETRO_SOURCE_URL = "https://data.humetro.busan.kr/homepage/default/stationtime/page/list.do?menu_no=1001010301"
 MAX_HTML_BYTES = 2 * 1024 * 1024
-HUMETRO_PARSER_REVISION = "20261101-script-text"
+HUMETRO_PARSER_REVISION = "20261102-course-legend"
 
 
 class HumetroAuthError(KricAuthError):
@@ -157,6 +157,15 @@ def parse_humetro_timetable_page(raw: bytes, *, line_code: str, station_code: st
     names: dict[str, list[str]] = {}
     for option in station_options:
         names.setdefault(_text(option), []).append(option.attrs.get("value", ""))
+    # 일부 노선은 접근성 텍스트의 행선지가 비어 있고 같은 페이지 범례에만 있다.
+    # 방향 순서나 인접 역을 추정하지 않고 정확한 course-mark 번호만 연결한다.
+    legends: dict[str, set[str]] = {}
+    legend_nodes = [node for node in root.walk("li") if "course-mark-wrap" in node.attrs.get("class", "").split()]
+    for node in (span for legend in legend_nodes for span in legend.walk("span")):
+        for part in node.attrs.get("class", "").split():
+            match = re.fullmatch(r"course-mark-(\d+)-s", part)
+            if match and (label := _text(node)):
+                legends.setdefault(match[1], set()).add(label)
     items: list[HumetroTimetableEntry] = []
     previous = -1
     offset = 0
@@ -182,12 +191,22 @@ def parse_humetro_timetable_page(raw: bytes, *, line_code: str, station_code: st
             raise HumetroSchemaError("HUmetro weekday cell count changed")
         for day, cell in zip(("8", "7", "9"), cells):
             for node in cell.walk("span"):
-                if not any(re.fullmatch(r"course-mark-\d+", part) for part in node.attrs.get("class", "").split()):
+                courses = [match[1] for part in node.attrs.get("class", "").split()
+                           if (match := re.fullmatch(r"course-mark-(\d+)", part))]
+                if not courses:
                     continue
-                match = re.fullmatch(r"(.+?)행\s*([0-5][0-9])\s*분\s*출발", _text(node))
+                if len(courses) != 1:
+                    raise HumetroSchemaError("HUmetro departure course is ambiguous")
+                match = re.fullmatch(r"(.*?)행\s*([0-5][0-9])\s*분\s*출발", _text(node))
                 if not match:
                     raise HumetroSchemaError("HUmetro departure minute invalid")
                 destination, minute = match.groups()
+                destination = destination.strip()
+                if not destination:
+                    labels = legends.get(courses[0], set())
+                    if len(labels) != 1:
+                        raise HumetroSchemaError("HUmetro departure destination legend absent or ambiguous")
+                    destination = next(iter(labels))
                 if len(destination) > 160:
                     raise HumetroSchemaError("HUmetro destination exceeds limit")
                 matching_codes = names.get(destination, [])

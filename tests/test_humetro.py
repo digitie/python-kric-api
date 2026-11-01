@@ -45,6 +45,29 @@ def test_last_train_inline_script_is_not_departure_text():
     assert parse(raw).items[0].terminal_station_code is None
 
 
+def legend(label: str, course: str = "5") -> bytes:
+    return f'<li class="course-mark-wrap"><span class="course-mark-{course}-s">{label}</span></li>'.encode()
+
+
+def test_empty_accessibility_destination_uses_matching_official_legend_only():
+    raw=page().replace("다대포해수욕장행".encode(), "행".encode())
+    result=parse(legend("다대포해수욕장")+raw)
+    assert len(result.items)==6
+    assert all(v.destination_name=="다대포해수욕장" and v.terminal_station_code=="95" for v in result.items)
+    assert result.items[-1].departure_time=="24:31"
+
+
+@pytest.mark.parametrize("extra", [b'',legend("다른 방향", "2"),legend("A")+legend("B"),legend("x"*161)])
+def test_absent_ambiguous_or_oversized_destination_legend_is_error(extra):
+    raw=page().replace("다대포해수욕장행".encode(), "행".encode())
+    with pytest.raises(HumetroSchemaError):parse(extra+raw)
+
+
+def test_multiple_departure_course_numbers_are_not_guessed():
+    with pytest.raises(HumetroSchemaError):
+        parse(page().replace(b'class="course-mark-5"', b'class="course-mark-5 course-mark-2"'))
+
+
 @pytest.mark.parametrize("old,new",[
  (b'value="100" selected',b'value="101" selected'),(b'value="1" selected',b'value="2" selected'),
  (b'name="updown" value="0"',b'name="updown" value="1"'),(b'name="S_HO"',b'name="other"'),
