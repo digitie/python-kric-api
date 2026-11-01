@@ -186,7 +186,7 @@ class KorailPublicClient:
         payload = await self._get(_GUIDE, {"mode": "list", "page": str(page), "schOpt2": kind, "schStr": "", "schFld": category_code})
         return parse_korail_guide_page(payload, kind=kind, page=page)
 
-    async def get_category_stations(self, *, kind: GuideKind, category_code: str, max_pages: int = 10) -> KorailGuidePage:
+    async def get_category_stations(self, *, kind: GuideKind, category_code: str, max_pages: int = 50) -> KorailGuidePage:
         if isinstance(max_pages, bool) or not isinstance(max_pages, int) or not 1 <= max_pages <= 50:
             raise KricInvalidParameterError("KORAIL max_pages is invalid")
         first = await self.get_guide_page(kind=kind, category_code=category_code)
