@@ -186,17 +186,17 @@ class KorailPublicClient:
         payload = await self._get(_GUIDE, {"mode": "list", "page": str(page), "schOpt2": kind, "schStr": "", "schFld": category_code})
         return parse_korail_guide_page(payload, kind=kind, page=page)
 
-    async def get_category_stations(self, *, kind: GuideKind, category_code: str, max_pages: int = 10) -> KorailGuidePage:
-        if not category_code or isinstance(max_pages, bool) or not isinstance(max_pages, int) or not 1 <= max_pages <= 50:
-            raise KricInvalidParameterError("KORAIL line and max_pages are required")
+    async def get_category_stations(self, *, kind: GuideKind, category_code: str, max_pages: int = 50) -> KorailGuidePage:
+        if isinstance(max_pages, bool) or not isinstance(max_pages, int) or not 1 <= max_pages <= 50:
+            raise KricInvalidParameterError("KORAIL max_pages is invalid")
         first = await self.get_guide_page(kind=kind, category_code=category_code)
-        if category_code not in {row.code for row in first.categories}:
+        if category_code and category_code not in {row.code for row in first.categories}:
             raise KricInvalidParameterError("KORAIL guide category does not exist")
         stations = list(first.stations)
         def validate_rows() -> None:
             if len(stations) > first.total or len({row.station_sequence for row in stations}) != len(stations):
                 raise KricServerError("KORAIL guide contains duplicated or excess stations")
-            if any(category_code not in row.category_codes for row in stations):
+            if category_code and any(category_code not in row.category_codes for row in stations):
                 raise KricServerError("KORAIL guide contains a station outside the requested category")
         validate_rows()
         for page_no in range(2, max_pages + 1):
@@ -209,7 +209,7 @@ class KorailPublicClient:
             validate_rows()
         if len(stations) != first.total or len({row.station_sequence for row in stations}) != len(stations):
             raise KricServerError("KORAIL guide pagination is incomplete or duplicated")
-        if any(category_code not in row.category_codes for row in stations):
+        if category_code and any(category_code not in row.category_codes for row in stations):
             raise KricServerError("KORAIL guide contains a station outside the requested category")
         return KorailGuidePage(kind, 1, first.total, tuple(stations), first.categories)
 

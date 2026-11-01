@@ -1,6 +1,7 @@
 """KRIC Open API의 역·노선·시간표·편의시설 client를 제공한다."""
 
 from .client import KricClient
+from .humetro import HUMETRO_PARSER_REVISION, HumetroClient, HumetroTimetableEntry, HumetroTimetablePage, HumetroAuthError, HumetroRateLimitError, HumetroSchemaError, parse_humetro_timetable_page
 from .korail_public import (
     KorailPublicClient, KorailPublicStation, KorailGuideCategory, KorailStationGuide, KorailGuidePage,
     parse_korail_public_stations, parse_korail_guide_page,
@@ -23,6 +24,7 @@ from .exceptions import (
     KricError,
     KricInvalidParameterError,
     KricNetworkError,
+    KricNoDataError,
     KricRateLimitError,
     KricServerError,
     KricStorageConfigurationError,
@@ -48,6 +50,8 @@ from .models import (
 )
 
 __all__ = [
+    "HUMETRO_PARSER_REVISION",
+    "HumetroClient", "HumetroTimetableEntry", "HumetroTimetablePage", "HumetroAuthError", "HumetroRateLimitError", "HumetroSchemaError", "parse_humetro_timetable_page",
     "parse_korail_guide_page",
     "parse_korail_public_stations",
     "KorailGuidePage",
@@ -65,6 +69,7 @@ __all__ = [
     "KricError",
     "KricInvalidParameterError",
     "KricNetworkError",
+    "KricNoDataError",
     "KricRateLimitError",
     "KricServerError",
     "KricStorageConfigurationError",

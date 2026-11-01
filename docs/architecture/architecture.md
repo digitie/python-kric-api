@@ -16,3 +16,7 @@ API 응답은 JSON/XML 형식이 확인된 뒤 한 곳에서 정규화한다. �
 보관한다. HTTPS endpoint를 기본으로 요구하며 loopback private RustFS의 평문 HTTP는 호출자가
 명시적으로 opt-in해야 한다. 이 저장소는 RustFS endpoint·bucket·비밀키를 자동으로 읽지 않고 호출자가 명시적으로
 전달하므로 provider와 운영 환경의 비밀값 소유 경계를 섞지 않는다.
+
+## 부산교통공사 시간표
+
+공식 HTML은 별도 `HumetroClient`와 bounded 파서로 처리한다. KRIC 인증키·오류 코드와 섞지 않는다. 한 요청은 한 방향이며 HTTP 예산·24시간 저장·양방향 원자 반영은 소비자에 둔다. 분 단위 원문과 자정 이후 서비스 시각을 함께 보존한다.

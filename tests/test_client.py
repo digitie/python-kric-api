@@ -15,6 +15,7 @@ from kric import (
     KricFileClient,
     KricInvalidParameterError,
     KricNetworkError,
+    KricNoDataError,
     KricRateLimitError,
     KricServerError,
     ServiceDayCode,
@@ -109,6 +110,23 @@ async def test_error_envelope_maps_quota_message():
     async with KricClient("test-key") as client:
         with pytest.raises(KricRateLimitError):
             await client.get_station_info(station_code="150")
+
+
+@respx.mock
+@pytest.mark.parametrize("payload,error", [
+    ({"header": {"resultCode": "03", "resultMsg": "데이터가 없습니다."}, "body": None}, KricNoDataError),
+    ({"header": {"resultCode": "99", "resultMsg": "데이터가 없습니다."}, "body": None}, KricServerError),
+    ({"header": {"resultCode": "03"}, "body": [{"stinCd": "0150"}]}, KricServerError),
+    ({"header": {"resultCode": "03"}, "response": {"body": {"items": []}}}, KricServerError),
+    ({"header": {"resultCode": "03", "resultMsg": "서비스키 인증 오류"}}, KricAuthError),
+])
+async def test_no_data_is_explicit_and_does_not_mask_errors_or_populated_body(payload, error):
+    respx.get("https://openapi.kric.go.kr/openapi/convenientInfo/stationTimetable").mock(
+        return_value=httpx.Response(200, json=payload)
+    )
+    async with KricClient("test-key") as client:
+        with pytest.raises(error):
+            await client.get_station_timetable(rail_operator_code="S1", line_code="1", station_code="0150", day_code="9")
 
 
 @respx.mock

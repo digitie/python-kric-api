@@ -18,6 +18,31 @@ def test_guide_keeps_provider_identifiers_routes_and_public_contact():
     assert result.stations[0].category_codes == ("gyeongbu",)
 
 
+@pytest.mark.asyncio
+@respx.mock
+async def test_all_stations_are_located_without_a_category_selection():
+    endpoint = respx.get("https://www.korail.com/com/userStation.do").mock(return_value=httpx.Response(200, json=payload()))
+    respx.get("https://www.korail.com/public/st_info/station_data.json").mock(return_value=httpx.Response(200, json={"stns":{"stn":[{"stn_cd":"0001","stn_nm":"서울","longitude":"126.97","latitude":"37.55"}]}}))
+    async with KorailPublicClient() as client:
+        page = await client.get_located_category_stations(kind="main", category_code="")
+    assert page.total == 1 and page.stations[0].longitude == 126.97
+    assert endpoint.calls[0].request.url.params["schFld"] == ""
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_unfiltered_guide_can_cross_ten_pages(monkeypatch):
+    async def no_delay(_): pass
+    monkeypatch.setattr("kric.korail_public.asyncio.sleep", no_delay)
+    def respond(request):
+        page = int(request.url.params['page'])
+        return httpx.Response(200, json=payload([{"stationSeq":str(page),"title":f"역{page}","mainLine":"gyeongbu,"}], total=11))
+    endpoint=respx.get("https://www.korail.com/com/userStation.do").mock(side_effect=respond)
+    async with KorailPublicClient() as client:
+        result=await client.get_category_stations(kind="main",category_code="")
+    assert len(result.stations)==11 and endpoint.call_count==11
+
+
 @pytest.mark.parametrize("update", [{"strResult": "FAIL"}, {"totcnt": None}, {"totcnt": True}, {"resultList": None}, {"resultList": []}, {"lineList": None}])
 def test_bad_guide_contract_does_not_turn_into_a_normal_empty_result(update):
     with pytest.raises(KricServerError):
