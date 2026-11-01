@@ -1,3 +1,19 @@
+## 2026-11-01 부산교통공사 공식 시간표
+
+`HumetroClient`는 인증키 없는 [부산교통공사 공식 시간표](https://data.humetro.busan.kr/homepage/default/stationtime/page/list.do?menu_no=1001010301)를 조회한다. KRIC 자료 없음과 구분되는 별도 원천이며 HTML 파싱은 SDK가 소유한다.
+
+```python
+from kric import HumetroClient
+
+async with HumetroClient() as client:
+    page = await client.get_station_page(line_code="1", station_code="100")
+    # available_directions의 다른 방향은 소비자의 호출 예산 아래 별도로 조회한다.
+```
+
+한 방향의 평일(8)·토요일(7)·일/공휴일(9)을 반환한다. 선택 역·노선·방향·요일 열과 시간표 구조를 검증하며 형식 오류를 정상 빈 결과로 바꾸지 않는다. 분 단위 출발 계획만 제공하며 열차 번호·도착 시각·서비스 날짜·실시간 도착은 추정하지 않는다. 원문의 23시 뒤 00:24는 `departure_time="24:24"`, `source_clock="00:24"`로 보존한다. 행선지 코드는 같은 페이지의 역 목록에서 이름이 유일하게 일치할 때만 제공한다. 응답 SHA-256과 원천 URL을 반환하며 수집 주기·양방향 원자 저장·실패 후 정상본 보존은 소비자 책임이다.
+
+동매역 실제 양방향 조회는 토요일 334행·평일 359행·휴일 320행을 확인했다. 이는 2026-11-01 관측이며 다른 날짜의 고정 기대값이 아니다. WSL 오프라인 247개 통과·live 2개 제외, 전체 커버리지 93.07%, 새 모듈 100%, mypy 오류 0개다. 운영 DB 저장과 UI 수용은 소비자 배포에서 별도 확인한다.
+
 # 2026-10-24 코레일 공개 역 안내
 
 - 공개 웹의 JSON 계약과 식별자를 검증하고 typed client와 좌표 연결을 추가했다.
