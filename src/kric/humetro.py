@@ -1,7 +1,7 @@
 """부산교통공사 공식 HTML 시간표. KRIC API 응답과 별개의 공개 원천이다."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from html.parser import HTMLParser
 import re
@@ -14,7 +14,11 @@ from .exceptions import KricAuthError, KricInvalidParameterError, KricNetworkErr
 HUMETRO_TIMETABLE_URL = "https://data.humetro.busan.kr/homepage/default/stationtime/page/view.do?menu_no=10010103"
 HUMETRO_SOURCE_URL = "https://data.humetro.busan.kr/homepage/default/stationtime/page/list.do?menu_no=1001010301"
 MAX_HTML_BYTES = 2 * 1024 * 1024
-HUMETRO_PARSER_REVISION = "20261102-course-legend"
+HUMETRO_PARSER_REVISION = "20261102-course-kric"
+
+# KRIC 공식 코드 파일과 공식 웹 역 선택지에서 역명이 정확히 일치하는 연장 5역.
+# 다른 코드의 선행 0이나 숫자 부분을 일반화해 변환하지 않는다.
+_KRIC_LINE1_WEB_CODES = {"195": "95", "196": "96", "197": "97", "198": "98", "199": "99"}
 
 
 class HumetroAuthError(KricAuthError):
@@ -56,6 +60,7 @@ class HumetroTimetablePage:
     items: tuple[HumetroTimetableEntry, ...]
     checksum_sha256: str
     source_url: str = HUMETRO_SOURCE_URL
+    source_station_code: str | None = None
 
 
 @dataclass
@@ -215,7 +220,7 @@ def parse_humetro_timetable_page(raw: bytes, *, line_code: str, station_code: st
                     matching_codes[0] if len(matching_codes) == 1 else None, chosen))
                 if len(items) > 10_000:
                     raise HumetroSchemaError("HUmetro timetable exceeds row limit")
-    return HumetroTimetablePage(line_code, station_code, station_name, chosen, tuple(sorted(available)), tuple(items), sha256(raw).hexdigest())
+    return HumetroTimetablePage(line_code, station_code, station_name, chosen, tuple(sorted(available)), tuple(items), sha256(raw).hexdigest(), source_station_code=station_code)
 
 
 def _validate(line: str, station: str, direction: str | None) -> None:
@@ -241,6 +246,21 @@ class HumetroClient:
     async def aclose(self) -> None:
         if self._owns_client:
             await self._client.aclose()
+
+    async def get_station_page_for_kric(self, *, line_code: str, station_code: str,
+                                        direction: str | None = None) -> HumetroTimetablePage:
+        """KRIC 참조 코드로 한 번 조회하고 웹 원시 코드는 별도 보존한다.
+
+        부산 1호선 연장 5역만 확인된 공식 코드 차이를 적용한다. 기존 native
+        get_station_page 계약은 유지하며 코드 연결을 위해 HTTP를 추가하지 않는다.
+        """
+        codes = _KRIC_LINE1_WEB_CODES if line_code == "1" else {}
+        page = await self.get_station_page(line_code=line_code, station_code=codes.get(station_code, station_code), direction=direction)
+        reverse_codes = {value: key for key, value in codes.items()}
+        rows = tuple(replace(row, station_code=station_code,
+                             terminal_station_code=reverse_codes.get(row.terminal_station_code, row.terminal_station_code) if row.terminal_station_code else None)
+                     for row in page.items)
+        return replace(page, station_code=station_code, items=rows)
 
     async def get_station_page(self, *, line_code: str, station_code: str,
                                direction: str | None = None) -> HumetroTimetablePage:

@@ -68,6 +68,45 @@ def test_multiple_departure_course_numbers_are_not_guessed():
         parse(page().replace(b'class="course-mark-5"', b'class="course-mark-5 course-mark-2"'))
 
 
+def reference_page(code: str, line: str = "1") -> bytes:
+    import re
+    raw=page().decode()
+    names={"95":"다대포해수욕장","96":"다대포항","97":"낫개","98":"신장림","99":"장림","100":"동매"}
+    names.setdefault(code,"코드 보존 시험역")
+    options=''.join(f'<option value="{value}"'+(' selected' if value==code else '')+f'>{name}</option>' for value,name in names.items())
+    raw=re.sub(r'<select name="S_STATION">.*?</select>', '<select name="S_STATION">'+options+'</select>', raw, flags=re.S)
+    return raw.replace('value="1" selected',f'value="{line}" selected').encode()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("canonical,native",[("195","95"),("196","96"),("197","97"),("198","98"),("199","99"),("0100","0100")])
+async def test_kric_reference_codes_preserved_and_native_code_auditable(canonical,native):
+    requests=[]
+    async def handler(request):
+        requests.append(request)
+        assert b's_station='+native.encode() in request.content
+        return httpx.Response(200,headers={"content-type":"text/html"},content=reference_page(native))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        result=await HumetroClient(client=http).get_station_page_for_kric(line_code="1",station_code=canonical)
+    assert len(requests)==1 and result.station_code==canonical and result.source_station_code==native
+    assert all(v.station_code==canonical and v.terminal_station_code=="195" for v in result.items)
+
+
+@pytest.mark.asyncio
+async def test_native_contract_and_other_line_codes_are_not_rewritten():
+    async def handler(request):
+        return httpx.Response(200,headers={"content-type":"text/html"},content=reference_page("95"))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        native=await HumetroClient(client=http).get_station_page(line_code="1",station_code="95")
+    assert native.station_code==native.source_station_code=="95" and native.items[0].terminal_station_code=="95"
+    async def other_line(request):
+        assert b's_station=195' in request.content
+        return httpx.Response(200,headers={"content-type":"text/html"},content=reference_page("195","2"))
+    async with httpx.AsyncClient(transport=httpx.MockTransport(other_line)) as http:
+        unchanged=await HumetroClient(client=http).get_station_page_for_kric(line_code="2",station_code="195")
+    assert unchanged.station_code==unchanged.source_station_code=="195" and unchanged.items[0].terminal_station_code=="95"
+
+
 @pytest.mark.parametrize("old,new",[
  (b'value="100" selected',b'value="101" selected'),(b'value="1" selected',b'value="2" selected'),
  (b'name="updown" value="0"',b'name="updown" value="1"'),(b'name="S_HO"',b'name="other"'),
