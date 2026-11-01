@@ -14,6 +14,7 @@ from .exceptions import KricAuthError, KricInvalidParameterError, KricNetworkErr
 HUMETRO_TIMETABLE_URL = "https://data.humetro.busan.kr/homepage/default/stationtime/page/view.do?menu_no=10010103"
 HUMETRO_SOURCE_URL = "https://data.humetro.busan.kr/homepage/default/stationtime/page/list.do?menu_no=1001010301"
 MAX_HTML_BYTES = 2 * 1024 * 1024
+HUMETRO_PARSER_REVISION = "20261101-script-text"
 
 
 class HumetroAuthError(KricAuthError):
@@ -72,6 +73,8 @@ class _Node:
                 yield from child.walk(tag)
 
     def text(self) -> str:
+        if self.tag in {"script", "style"}:
+            return ""
         return "".join(child.text() if isinstance(child, _Node) else child for child in self.children)
 
 

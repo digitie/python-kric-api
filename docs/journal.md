@@ -1,3 +1,7 @@
+## 2026-11-01 — 막차 안내 script와 파서 버전
+
+신평역 실제 HTML의 출발 span 안에 막차 안내 JavaScript가 포함되어 있었다. DOM 글자 추출은 script/style 본문을 제외하고 실행하지 않는다. 시간·행선지·역·요일 검증을 완화하지 않으며 실제 원문은 별도 보존한다. `HUMETRO_PARSER_REVISION`은 소비자의 수정 전 파서 실패와 수정 후 한 번의 재시도를 구분한다. 인증·호출 제한 보호와 정상본 재사용은 소비자가 유지한다. WSL 248개·mypy 통과다.
+
 ## 2026-11-01 부산교통공사 공식 시간표
 
 `HumetroClient`는 인증키 없는 [부산교통공사 공식 시간표](https://data.humetro.busan.kr/homepage/default/stationtime/page/list.do?menu_no=1001010301)를 조회한다. KRIC 자료 없음과 구분되는 별도 원천이며 HTML 파싱은 SDK가 소유한다.

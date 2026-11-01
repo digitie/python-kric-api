@@ -33,6 +33,14 @@ def test_weekdays_minute_precision_and_service_midnight():
 def test_unknown_or_ambiguous_destination_name_never_guesses_code():
     raw=page().replace('다대포해수욕장</option>'.encode(),'확인불가</option>'.encode())
     assert parse(raw).items[0].terminal_station_code is None
+
+
+def test_last_train_inline_script_is_not_departure_text():
+    # 신평역 공식 표의 막차 안내는 출발 span 안에 script로 삽입된다.
+    script = b'<script>$(document).ready(function(){$("#last-train").text("00:37");});</script>'
+    raw = page().replace(b'</span></span></td>', b'</span>' + script + b'<style>.x{color:red}</style></span></td>')
+    result = parse(raw)
+    assert [(v.day_code, v.departure_time) for v in result.items] == [(v.day_code, v.departure_time) for v in parse(page()).items]
     raw=page().replace(b'</select>\n    <input',b'<option value="999">'+"다대포해수욕장".encode()+b'</option></select>\n    <input')
     assert parse(raw).items[0].terminal_station_code is None
 
