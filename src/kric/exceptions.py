@@ -25,5 +25,9 @@ class KricServerError(KricError):
     """KRIC 오류 응답 또는 문서화되지 않은 응답 구조."""
 
 
+class KricNoDataError(KricError):
+    """KRIC가 resultCode 03으로 해당 조회의 데이터 부재를 명시한 경우."""
+
+
 class KricStorageConfigurationError(KricError):
     """RustFS/S3 endpoint, bucket 또는 저장소 수명주기 설정이 올바르지 않은 경우."""

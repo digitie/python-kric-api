@@ -11,6 +11,7 @@ from .exceptions import (
     KricAuthError,
     KricInvalidParameterError,
     KricNetworkError,
+    KricNoDataError,
     KricRateLimitError,
     KricServerError,
 )
@@ -208,4 +209,8 @@ def _raise_for_error_envelope(payload: Mapping[str, Any]) -> None:
         raise KricAuthError(message)
     if "초과" in message or "limit" in normalized or "quota" in normalized:
         raise KricRateLimitError(message)
+    # 실제 KRIC 03/null-body 응답만 구분한다. 알 수 없는 코드나 모순된
+    # 데이터 본문을 빈 시간표로 바꾸지 않는다.
+    if code == "03" and payload.get("body") is None and "response" not in payload:
+        raise KricNoDataError("KRIC returned no data (03)")
     raise KricServerError(message)
